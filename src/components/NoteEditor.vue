@@ -10,7 +10,6 @@ import {
 } from "vue";
 import NoteToolbar from "./NoteToolbar.vue";
 import type { ToolbarAction } from "./NoteToolbar.vue";
-import StyleSettings from "./StyleSettings.vue";
 import { useNoteStyles } from "../composables/useNoteStyles";
 import type { BlockKind, InlineMark, ToolbarUi } from "../editor/blocks";
 import {
@@ -429,9 +428,6 @@ onBeforeUnmount(() => {
         <p class="page__foot">共 {{ wordCount }} 字</p>
       </div>
     </div>
-
-    <!-- 正文与标题样式设置（右上角悬浮入口） -->
-    <StyleSettings />
   </div>
 </template>
 
@@ -471,7 +467,7 @@ onBeforeUnmount(() => {
 /* 页脚：固定在页面底部 padding 条内（右下角），不随内容滚动 */
 .page__foot {
   flex: none;
-  height: 40px;
+  height: 60px;
   margin: 0;
   display: flex;
   align-items: center;

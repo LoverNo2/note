@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { Note } from "../types";
 import { useNotes } from "../composables/useNotes";
 import { useToast } from "../composables/useToast";
+import StyleSettings from "./StyleSettings.vue";
 import { textFromHtml } from "../editor/html";
 import { formatRelativeTime, noteSummary } from "../utils/format";
 
@@ -145,6 +146,9 @@ onBeforeUnmount(() =>
         </transition>
       </div>
     </div>
+
+    <!-- 右侧：正文与标题样式设置 -->
+    <StyleSettings />
   </header>
 
   <div class="toast-list">
