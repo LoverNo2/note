@@ -170,8 +170,9 @@ onBeforeUnmount(() =>
   height: 50px;
   flex: none;
   padding: 0 16px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: none;
   background: var(--bg-canvas);
+  box-shadow: var(--neu-raise-sm);
 }
 
 .appbar__left {
@@ -190,6 +191,8 @@ onBeforeUnmount(() =>
 .appbar__new {
   padding: 5px 12px;
   font-size: 13px;
+  font-weight: 400;
+  height: 28px;
 }
 
 /* ---------- 笔记切换下拉 ---------- */
@@ -203,24 +206,29 @@ onBeforeUnmount(() =>
   gap: 8px;
   max-width: 320px;
   min-width: 120px;
-  height: 30px;
+  height: 28px;
   padding: 0 6px 0 12px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
+  border: none;
+  border-radius: var(--radius-md);
   background: var(--bg-canvas);
   color: var(--text-strong);
   font-size: 13.5px;
   cursor: pointer;
+  box-shadow: var(--neu-raise-sm);
   transition:
     background-color 0.14s ease,
-    border-color 0.14s ease;
+    box-shadow 0.14s ease;
 }
 .picker__trigger:hover:not(:disabled) {
-  background: var(--bg-hover);
+  background: rgba(255, 255, 255, 0.3);
+}
+.picker__trigger:active:not(:disabled) {
+  box-shadow: var(--neu-sink-sm);
 }
 .picker__trigger:disabled {
   color: var(--text-faint);
   cursor: default;
+  box-shadow: none;
 }
 .picker__label {
   flex: 1;
@@ -233,15 +241,15 @@ onBeforeUnmount(() =>
 
 .picker__panel {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + 10px);
   left: 0;
   z-index: 40;
   width: 300px;
   max-height: min(420px, 60vh);
   overflow-y: auto;
-  padding: 5px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  padding: 6px;
+  border: none;
+  border-radius: 12px;
   background: var(--bg-canvas);
   box-shadow: var(--shadow-pop);
 }

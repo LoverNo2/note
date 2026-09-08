@@ -82,7 +82,6 @@ function iconOf(action: ToolbarAction): IconName {
       @click="emit('exec', 'codeblock')"
     ><Icon :name="iconOf('codeblock')" /></button>
 
-    <span class="sep"></span>
 
     <button
       class="btn"
@@ -91,7 +90,6 @@ function iconOf(action: ToolbarAction): IconName {
       @click="emit('exec', 'divider')"
     ><Icon :name="iconOf('divider')" /></button>
 
-    <span class="sep"></span>
 
     <button
       class="btn"
@@ -108,7 +106,6 @@ function iconOf(action: ToolbarAction): IconName {
       @click="emit('exec', 'orderedList')"
     ><Icon :name="iconOf('orderedList')" /></button>
 
-    <span class="sep"></span>
 
     <button
       class="btn"
@@ -176,17 +173,20 @@ function iconOf(action: ToolbarAction): IconName {
   transition: background-color 0.14s ease, color 0.14s ease;
 }
 .btn:hover {
-  background: var(--bg-hover);
+  background: rgba(255, 255, 255, 0.32);
+  box-shadow: var(--neu-raise-sm);
   color: var(--text-strong);
 }
 .btn.active {
-  background: var(--accent-soft);
+  background: transparent;
+  box-shadow: var(--neu-sink);
   color: var(--accent);
 }
 .btn:disabled {
   opacity: 0.35;
   cursor: default;
   background: transparent;
+  box-shadow: none;
 }
 
 .sep {

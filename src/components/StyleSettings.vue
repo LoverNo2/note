@@ -555,21 +555,23 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 32px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
+  width: 36px;
+  height: 34px;
+  border: none;
+  border-radius: 10px;
+  background: var(--bg-canvas);
   color: var(--text-mid);
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  box-shadow: var(--neu-raise-sm);
+  transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 .ss__btn:hover {
-  background: var(--bg-hover);
+  background: rgba(255, 255, 255, 0.35);
   color: var(--text-strong);
 }
 .ss__btn.active {
-  background: var(--accent-soft);
+  background: transparent;
+  box-shadow: var(--neu-sink);
   color: var(--accent);
 }
 .ss__btn-ic {
@@ -583,18 +585,16 @@ onBeforeUnmount(() => {
 /* ============ 面板 ============ */
 .ss__panel {
   position: absolute;
-  top: calc(100% + 10px);
+  top: calc(100% + 12px);
   right: 0;
   width: 350px;
-  max-height: min(76vh, 640px);
+  max-height: min(78vh, 660px);
   display: flex;
   flex-direction: column;
-  border: 1px solid rgba(55, 53, 47, 0.09);
-  border-radius: 14px;
+  border: none;
+  border-radius: 18px;
   background: var(--bg-canvas);
-  box-shadow:
-    0 1px 2px rgba(15, 15, 15, 0.06),
-    0 12px 32px rgba(15, 15, 15, 0.12);
+  box-shadow: var(--shadow-pop);
   overflow: hidden;
 }
 
@@ -632,7 +632,7 @@ onBeforeUnmount(() => {
   transition: background-color 0.14s ease, color 0.14s ease;
 }
 .ss__close:hover {
-  background: var(--bg-hover);
+  background: rgba(255, 255, 255, 0.35);
   color: var(--text-strong);
 }
 .ss__close svg {
@@ -650,8 +650,8 @@ onBeforeUnmount(() => {
   grid-template-columns: repeat(4, 1fr);
   gap: 2px;
   padding: 0 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-soft);
+  background: var(--bg-sidebar);
+  box-shadow: inset 0 1px 3px rgba(24, 26, 30, 0.08);
 }
 .ss__tab {
   height: 30px;
@@ -704,8 +704,9 @@ onBeforeUnmount(() => {
 .f-val {
   min-width: 46px;
   padding: 2px 7px;
-  border-radius: 6px;
-  background: var(--bg-soft);
+  border-radius: 7px;
+  background: var(--bg-sidebar);
+  box-shadow: var(--neu-sink-sm);
   font-size: 11px;
   color: var(--text-mid);
   text-align: center;
@@ -758,38 +759,39 @@ onBeforeUnmount(() => {
   outline: none;
 }
 .range::-webkit-slider-runnable-track {
-  height: 5px;
-  border-radius: 3px;
+  height: 6px;
+  border-radius: 4px;
   background: linear-gradient(
     90deg,
     var(--accent) 0 var(--pct),
-    rgba(55, 53, 47, 0.12) var(--pct) 100%
+    rgba(24, 26, 30, 0.14) var(--pct) 100%
   );
+  box-shadow: inset 0 1px 2px rgba(24, 26, 30, 0.16);
 }
 .range::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  margin-top: -5px;
+  margin-top: -4.5px;
   width: 15px;
   height: 15px;
   border-radius: 50%;
   background: #fff;
-  border: 1px solid rgba(55, 53, 47, 0.18);
-  box-shadow: 0 1px 3px rgba(15, 15, 15, 0.2);
-  transition: transform 0.12s ease, border-color 0.12s ease;
+  border: none;
+  box-shadow: var(--neu-raise-sm);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 .range::-webkit-slider-thumb:hover {
   transform: scale(1.15);
-  border-color: var(--accent);
+  box-shadow: var(--neu-raise);
 }
 .range::-moz-range-track {
-  height: 5px;
-  border-radius: 3px;
-  background: rgba(55, 53, 47, 0.12);
+  height: 6px;
+  border-radius: 4px;
+  background: rgba(24, 26, 30, 0.14);
 }
 .range::-moz-range-progress {
-  height: 5px;
-  border-radius: 3px;
+  height: 6px;
+  border-radius: 4px;
   background: var(--accent);
 }
 .range::-moz-range-thumb {
@@ -797,8 +799,8 @@ onBeforeUnmount(() => {
   height: 13px;
   border-radius: 50%;
   background: #fff;
-  border: 1px solid rgba(55, 53, 47, 0.18);
-  box-shadow: 0 1px 3px rgba(15, 15, 15, 0.2);
+  border: none;
+  box-shadow: 0 2px 4px rgba(24, 26, 30, 0.3);
 }
 
 /* ---------- 取色（色块铺满 label 与 hex 之间整段） ---------- */
@@ -853,23 +855,25 @@ onBeforeUnmount(() => {
   width: 28px;
   height: 17px;
   border-radius: 9px;
-  background: rgba(55, 53, 47, 0.14);
-  transition: background-color 0.16s ease;
+  background: rgba(24, 26, 30, 0.16);
+  box-shadow: inset 0 1px 2px rgba(24, 26, 30, 0.22);
+  transition: background-color 0.16s ease, box-shadow 0.16s ease;
 }
 .sw__track::after {
   content: '';
   position: absolute;
-  top: 2.5px;
-  left: 2.5px;
-  width: 12px;
-  height: 12px;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 1px 2px rgba(15, 15, 15, 0.2);
+  box-shadow: 0 1px 3px rgba(24, 26, 30, 0.3);
   transition: transform 0.16s ease;
 }
 .sw input:checked + .sw__track {
   background: var(--accent);
+  box-shadow: none;
 }
 .sw input:checked + .sw__track::after {
   transform: translateX(11px);
@@ -880,16 +884,19 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 28px;
   padding: 0 8px;
-  border: 1px solid var(--border-strong);
+  border: none;
   border-radius: 8px;
-  background: var(--bg-canvas);
+  background: var(--bg-sidebar);
+  box-shadow: var(--neu-sink-sm);
   color: var(--text-mid);
   font-size: 12px;
   cursor: pointer;
-  transition: border-color 0.14s ease, color 0.14s ease;
+  outline: none;
+  transition: background-color 0.14s ease, color 0.14s ease, box-shadow 0.14s ease;
 }
 .f-select:hover {
-  border-color: var(--accent);
+  background: rgba(255, 255, 255, 0.3);
+  box-shadow: var(--neu-raise-sm);
   color: var(--text-strong);
 }
 
@@ -899,9 +906,8 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 8px;
   padding: 10px 12px;
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-canvas);
+  border: none;
+  background: var(--bg-soft);
 }
 .ss__snap-head {
   display: flex;
@@ -923,28 +929,31 @@ onBeforeUnmount(() => {
   min-width: 0;
   height: 28px;
   padding: 0 8px;
-  border: 1px solid var(--border-strong);
+  border: none;
   border-radius: 8px;
-  background: var(--bg-canvas);
+  background: var(--bg-sidebar);
+  box-shadow: var(--neu-sink-sm);
   color: var(--text-strong);
   font-size: 12px;
   outline: none;
-  transition: border-color 0.14s ease;
+  transition: background-color 0.14s ease, box-shadow 0.14s ease;
 }
 .ss__snap-input:focus {
-  border-color: var(--accent);
+  background: rgba(255, 255, 255, 0.4);
+  box-shadow: var(--neu-sink), 0 0 0 2px var(--accent-soft);
 }
 .ss__go {
   height: 28px;
   padding: 0 12px;
   border: none;
-  border-radius: 8px;
-  background: var(--accent);
+  border-radius: 9px;
+  background: linear-gradient(180deg, #3771f0, var(--accent));
   color: #fff;
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
-  transition: background-color 0.14s ease, opacity 0.14s ease;
+  box-shadow: 3px 3px 8px rgba(37, 99, 235, 0.32), -2px -2px 5px rgba(255, 255, 255, 0.65);
+  transition: background-color 0.14s ease, opacity 0.14s ease, box-shadow 0.14s ease;
 }
 .ss__go:hover {
   background: var(--accent-hover);
@@ -954,13 +963,15 @@ onBeforeUnmount(() => {
   cursor: default;
 }
 .ss__go--ghost {
-  background: transparent;
+  background: var(--bg-canvas);
   color: var(--text-mid);
-  border: 1px solid var(--border-strong);
+  border: none;
+  box-shadow: var(--neu-raise-sm);
 }
 .ss__go--ghost:hover {
-  background: var(--bg-hover);
+  background: rgba(255, 255, 255, 0.35);
   color: var(--text-strong);
+  box-shadow: var(--neu-raise);
 }
 .ss__snap-warn {
   margin: 0;

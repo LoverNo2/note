@@ -450,11 +450,18 @@ onBeforeUnmount(() => {
 }
 
 .page {
-  height: 100%;
+  height: calc(100% - 28px);
+  max-width: 1060px;
+  margin: 14px auto;
   display: flex;
   flex-direction: column;
-  padding: 34px 56px 0;
+  padding: 44px 72px 0;
   overflow: hidden;
+  background: #fffef8; /* 白纸卡面 */
+  border-radius: 20px;
+  box-shadow:
+    18px 18px 36px rgba(95, 100, 110, 0.32),
+    -14px -14px 28px rgba(255, 255, 255, 0.9);
 }
 
 /* 滚动内容区：可滚动的只有这里，四边 padding 均不参与滚动 */

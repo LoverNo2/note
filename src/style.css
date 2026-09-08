@@ -92,20 +92,20 @@
   color-scheme: light;
 
   /* 背景 */
-  --bg-canvas: #ffffff;
-  --bg-sidebar: #f8f8f6;
-  --bg-hover: rgba(55, 53, 47, 0.055);
-  --bg-active: rgba(55, 53, 47, 0.085);
-  --bg-soft: #f1f1ee;
+  --bg-canvas: #e7e8ea; /* 新拟态基底（暖灰，替代纯白） */
+  --bg-sidebar: #dcdee1;
+  --bg-hover: rgba(24, 26, 30, 0.05);
+  --bg-active: rgba(24, 26, 30, 0.09);
+  --bg-soft: #eef0f2;
 
   /* 边框 */
-  --border: #e9e8e4;
-  --border-strong: #d9d7d2;
+  --border: #d3d5da;
+  --border-strong: #c1c4cb;
 
   /* 文字（取自 Notion 的墨色阶） */
   --text-strong: #37352f;
   --text-mid: #6f6d67;
-  --text-faint: #a3a19a;
+  --text-faint: #a09ea2;
 
   /* 强调色（克制的蓝） */
   --accent: #2563eb;
@@ -123,7 +123,13 @@
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 10px;
-  --shadow-pop: 0 1px 2px rgba(15, 15, 15, 0.05), 0 8px 24px rgba(15, 15, 15, 0.09);
+  /* 浮层（下拉/面板） */
+  --shadow-pop: 12px 12px 26px rgba(95, 100, 110, 0.3), -10px -10px 22px rgba(255, 255, 255, 0.85);
+  /* 新拟态：凸起 / 凹陷 阴影 */
+  --neu-raise: 5px 5px 12px rgba(95, 100, 110, 0.3), -5px -5px 12px rgba(255, 255, 255, 0.9);
+  --neu-raise-sm: 3px 3px 7px rgba(95, 100, 110, 0.26), -3px -3px 7px rgba(255, 255, 255, 0.85);
+  --neu-sink: inset 3px 3px 7px rgba(95, 100, 110, 0.24), inset -3px -3px 7px rgba(255, 255, 255, 0.9);
+  --neu-sink-sm: inset 2px 2px 5px rgba(95, 100, 110, 0.22), inset -2px -2px 5px rgba(255, 255, 255, 0.85);
 
   /* 全局界面字体：中英文统一本地苹方 PingFang SC（自托管 6 字重）；系统字体兜底 */
   --font-sans:
@@ -201,13 +207,13 @@ textarea,
   height: 10px;
 }
 *::-webkit-scrollbar-thumb {
-  background-color: rgba(55, 53, 47, 0.16);
+  background-color: rgba(24, 26, 30, 0.18);
   border: 3px solid transparent;
   border-radius: 999px;
   background-clip: padding-box;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(55, 53, 47, 0.3);
+  background-color: rgba(24, 26, 30, 0.32);
 }
 *::-webkit-scrollbar-track {
   background: transparent;
@@ -224,15 +230,23 @@ textarea,
   height: 28px;
   flex: none;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--text-mid);
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+  transition:
+    box-shadow 0.16s ease,
+    background-color 0.16s ease,
+    color 0.16s ease;
 }
 .icon-btn:hover {
-  background: var(--bg-hover);
+  background: rgba(255, 255, 255, 0.3);
+  box-shadow: var(--neu-raise-sm);
   color: var(--text-strong);
+}
+.icon-btn:active:not(:disabled) {
+  box-shadow: var(--neu-sink-sm);
+  background: transparent;
 }
 .icon-btn.danger:hover {
   background: var(--danger-soft);
@@ -243,45 +257,61 @@ textarea,
   cursor: default;
 }
 
-/* 主按钮：蓝底圆角，用于「新建」等主操作 */
+/* 主按钮（灰底浮雕；用于「新建」等主操作） */
 .btn-primary {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   border: none;
-  border-radius: var(--radius-sm);
-  background: var(--accent);
-  color: #fff;
+  border-radius: 10px;
+  background: var(--bg-canvas);
+  color: var(--text-strong);
   font-size: 14px;
-  font-weight: 500;
-  padding: 7px 14px;
+  font-weight: 550;
+  padding: 7px 16px;
   cursor: pointer;
-  transition: background-color 0.15s ease, transform 0.05s ease;
+  box-shadow: var(--neu-raise-sm);
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.05s ease;
 }
 .btn-primary:hover {
-  background: var(--accent-hover);
+  background: rgba(255, 255, 255, 0.4);
+  color: var(--text-strong);
+  box-shadow: var(--neu-raise);
 }
 .btn-primary:active {
   transform: translateY(1px);
+  box-shadow: var(--neu-sink);
 }
 
-/* 次级文字按钮 */
+/* 次级文字按钮（灰底浮雕） */
 .btn-ghost {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
+  border: none;
+  border-radius: var(--radius-md);
   background: var(--bg-canvas);
   color: var(--text-mid);
   font-size: 13px;
-  padding: 6px 12px;
+  padding: 6px 13px;
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  box-shadow: var(--neu-raise-sm);
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 .btn-ghost:hover {
-  background: var(--bg-hover);
+  background: rgba(255, 255, 255, 0.25);
   color: var(--text-strong);
+}
+.btn-ghost:active {
+  box-shadow: var(--neu-sink-sm);
 }
 
 /* 行内迷你按钮（删除确认等） */
@@ -290,21 +320,29 @@ textarea,
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 5px;
+  border-radius: 7px;
   font-size: 12px;
-  padding: 3px 8px;
+  padding: 3px 9px;
   cursor: pointer;
-  background: var(--bg-soft);
+  background: var(--bg-canvas);
   color: var(--text-mid);
-  transition: background-color 0.15s ease, color 0.15s ease;
+  box-shadow: var(--neu-raise-sm);
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 .mini-btn:hover {
-  background: var(--bg-hover);
+  background: rgba(255, 255, 255, 0.3);
   color: var(--text-strong);
+}
+.mini-btn:active {
+  box-shadow: var(--neu-sink-sm);
 }
 .mini-btn.danger {
   background: var(--danger-soft);
   color: var(--danger);
+  box-shadow: none;
 }
 .mini-btn.danger:hover {
   background: rgba(211, 61, 61, 0.16);
