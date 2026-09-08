@@ -13,13 +13,43 @@ function onCreateFirst(): void {
   toast('已新建笔记', 'success')
 }
 
-async function saveProjectShortcut(): Promise<void> {
-  if (!currentNote.value) return
+async function doSaveToProject(): Promise<void> {
   const result = await saveToProject()
   if (result === 'ok') {
     toast('已保存到项目 notes/ 目录', 'success')
   } else {
     toast('保存失败：无法写入项目 notes/ 目录', 'error')
+  }
+}
+
+/* ---------------- 保存节流 ----------------
+ * ⌘S / Ctrl+S 可能被连按/按住不放。节流规则（窗口 1000ms）：
+ *  - 窗口内第一次触发：立即保存；
+ *  - 冷却期内再次触发：不重复写盘，只排一次「尾随保存」（冷却结束后执行，
+ *    保证最后一次修改也不会丢）；
+ *  - 尾随保存执行前若又到冷却窗口，按「立即保存」处理并取消尾随。
+ */
+const SAVE_THROTTLE_MS = 1000
+let lastSaveAt = 0
+let saveTrailTimer: number | undefined
+
+function requestSave(): void {
+  if (!currentNote.value) return
+  const now = Date.now()
+  const idle = now - lastSaveAt
+  if (idle >= SAVE_THROTTLE_MS) {
+    if (saveTrailTimer !== undefined) {
+      window.clearTimeout(saveTrailTimer)
+      saveTrailTimer = undefined
+    }
+    lastSaveAt = now
+    void doSaveToProject()
+  } else if (saveTrailTimer === undefined) {
+    saveTrailTimer = window.setTimeout(() => {
+      saveTrailTimer = undefined
+      lastSaveAt = Date.now()
+      void doSaveToProject()
+    }, SAVE_THROTTLE_MS - idle)
   }
 }
 
@@ -33,7 +63,7 @@ function onKeydown(e: KeyboardEvent): void {
     onCreateFirst()
   } else if (key === 's' && currentNote.value) {
     e.preventDefault()
-    void saveProjectShortcut()
+    requestSave()
   }
 }
 
@@ -50,6 +80,10 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
+  if (saveTrailTimer !== undefined) {
+    window.clearTimeout(saveTrailTimer)
+    saveTrailTimer = undefined
+  }
 })
 </script>
 
@@ -66,7 +100,7 @@ onBeforeUnmount(() => {
         <h1 class="welcome__title">欢迎使用</h1>
         <p class="welcome__desc">
           笔记存放在项目 <span class="kbd">notes/</span> 目录（每篇一个 JSON 文件）。
-          输入后点击右上角「保存」（⌘S）即写回项目；编辑内容在保存前仅存在内存中。
+          输入后按 <span class="kbd">⌘S</span> / <span class="kbd">Ctrl+S</span> 即写回项目；编辑内容在保存前仅存在内存中。
         </p>
         <button class="btn-primary" @click="onCreateFirst">新建第一条笔记</button>
         <p class="welcome__hint">快捷键 <span class="kbd">⌘</span> / <span class="kbd">Ctrl</span> + <span class="kbd">N</span></p>

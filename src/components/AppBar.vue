@@ -12,8 +12,6 @@ const {
   createNote,
   selectNote,
   deleteNote,
-  importFromFile,
-  saveToProject,
 } = useNotes();
 const { toasts, toast } = useToast();
 
@@ -76,60 +74,11 @@ onBeforeUnmount(() =>
   document.removeEventListener("pointerdown", onDocPointerdown),
 );
 
-/* ---------------- 文件操作 ---------------- */
-const saving = ref(false);
-
-const saveLabel = computed(() => (saving.value ? "保存中…" : "保存"));
-
-async function onSave(): Promise<void> {
-  if (saving.value || !currentNote.value) return;
-  saving.value = true;
-  try {
-    const result = await saveToProject();
-    if (result === "ok") {
-      toast(`已保存 ${sortedNotes.value.length} 篇笔记到项目 notes/ 目录`, "success");
-    } else {
-      toast("保存失败：无法写入项目 notes/ 目录，请确认通过 npm run dev 或 npm run preview 启动", "error");
-    }
-  } finally {
-    saving.value = false;
-  }
-}
-
-const fileInput = ref<HTMLInputElement | null>(null);
-
-function openImport(): void {
-  fileInput.value?.click();
-}
-
-async function onImportChange(e: Event): Promise<void> {
-  const input = e.target as HTMLInputElement;
-  const file = input.files?.[0];
-  if (file) {
-    try {
-      const result = await importFromFile(file);
-      if (result.total === 0) {
-        toast("该备份中没有可导入的笔记", "info");
-      } else {
-        toast(
-          `导入 ${result.added + result.updated} 条，请点「保存」写入项目 notes/`,
-          "success",
-        );
-      }
-    } catch (err) {
-      toast(
-        err instanceof Error ? err.message : "导入失败，请检查文件内容",
-        "error",
-      );
-    }
-  }
-  input.value = "";
-}
 </script>
 
 <template>
   <header ref="rootEl" class="appbar">
-    <!-- 左：品牌 + 新建 + 笔记切换 -->
+    <!-- 新建 + 笔记切换 -->
     <div class="appbar__left">
       <!-- <span class="brand">笔记本</span> -->
 
@@ -153,7 +102,6 @@ async function onImportChange(e: Event): Promise<void> {
           @click="toggleOpen"
         >
           <span class="picker__label">{{ currentLabel }}</span>
-          <span class="picker__caret" :class="{ up: open }">▾</span>
         </button>
 
         <transition name="drop">
@@ -197,31 +145,6 @@ async function onImportChange(e: Event): Promise<void> {
         </transition>
       </div>
     </div>
-
-    <!-- 右：文件操作 -->
-    <div class="appbar__right">
-      <button
-        class="btn-ghost"
-        title="从 JSON 备份导入笔记"
-        @click="openImport"
-      >
-        导入
-      </button>
-      <button
-        class="btn-primary appbar__save"
-        :disabled="saving || !currentNote"
-        title="把当前全部笔记写入项目 notes/ 目录（每篇一个 JSON 文件）· ⌘S"
-        @click="onSave"
-      >{{ saveLabel }}</button>
-    </div>
-
-    <input
-      ref="fileInput"
-      type="file"
-      accept="application/json,.json"
-      hidden
-      @change="onImportChange"
-    />
   </header>
 
   <div class="toast-list">
@@ -264,14 +187,6 @@ async function onImportChange(e: Event): Promise<void> {
   padding: 5px 12px;
   font-size: 13px;
 }
-.appbar__save {
-  padding: 5px 13px;
-  font-size: 13px;
-}
-.appbar__save:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
 
 /* ---------- 笔记切换下拉 ---------- */
 .picker {
@@ -310,14 +225,6 @@ async function onImportChange(e: Event): Promise<void> {
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: left;
-}
-.picker__caret {
-  font-size: 10px;
-  color: var(--text-faint);
-  transition: transform 0.15s ease;
-}
-.picker__caret.up {
-  transform: rotate(180deg);
 }
 
 .picker__panel {
@@ -396,12 +303,5 @@ async function onImportChange(e: Event): Promise<void> {
   text-align: center;
   font-size: 12.5px;
   color: var(--text-faint);
-}
-
-/* ---------- 右侧按钮 ---------- */
-.appbar__right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 </style>

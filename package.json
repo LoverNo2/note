@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "一个冷调极简风格的 Vue3 笔记本：本地存储、自动保存、JSON 导入导出。",
+  "description": "一个冷调极简风格的 Vue3 笔记本：本地存储。",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",

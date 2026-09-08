@@ -1,13 +1,12 @@
 import { computed, reactive } from 'vue'
-import type { BackupFile, Note } from '../types'
-import { BACKUP_MAGIC } from '../types'
+import type { Note } from '../types'
 
 /**
  * 笔记状态层（内存单例）。
  *
  * 持久化模型：不做任何自动存储——内容只存在于内存；
  * 启动时从项目 notes/ 目录载入（loadFromProject），
- * 点「保存」时把全部笔记写回该目录（saveToProject）。
+ * 按 ⌘S / Ctrl+S 时把全部笔记写回该目录（saveToProject）。
  */
 
 /** 生成一个简单且几乎不会冲突的唯一 id */
@@ -120,55 +119,6 @@ async function saveToProject(): Promise<'ok' | 'error'> {
   }
 }
 
-/* ---------------- 导入 ---------------- */
-
-function parseBackup(text: string): Note[] {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(text)
-  } catch {
-    throw new Error('无法解析该文件，请确认是「笔记本」保存的 JSON 文件')
-  }
-  if (typeof parsed !== 'object' || parsed === null) {
-    throw new Error('文件内容不是有效的 JSON 对象')
-  }
-  const obj = parsed as Partial<BackupFile>
-  if (obj.app !== BACKUP_MAGIC) {
-    throw new Error('这不是「笔记本」保存的备份文件（缺少标识）')
-  }
-  if (!Array.isArray(obj.notes)) {
-    throw new Error('文件中没有找到笔记数据')
-  }
-  return obj.notes.filter(isNote)
-}
-
-async function importFromFile(
-  file: File,
-): Promise<{ total: number; added: number; updated: number }> {
-  const text = await file.text()
-  const incoming = parseBackup(text)
-
-  let added = 0
-  let updated = 0
-  for (const note of incoming) {
-    const existing = state.notes.find((n) => n.id === note.id)
-    if (existing) {
-      // 同 id：采用文件中较新的内容合并覆盖
-      existing.title = note.title
-      existing.content = note.content
-      existing.updatedAt = note.updatedAt
-      updated += 1
-    } else {
-      state.notes.push({ ...note })
-      added += 1
-    }
-  }
-  if (state.currentId === null && state.notes.length > 0) {
-    state.currentId = sortedNotes.value[0]?.id ?? null
-  }
-  return { total: incoming.length, added, updated }
-}
-
 /* ---------------- 对外暴露 ---------------- */
 
 export function useNotes() {
@@ -183,6 +133,5 @@ export function useNotes() {
     markEdited,
     loadFromProject,
     saveToProject,
-    importFromFile,
   }
 }

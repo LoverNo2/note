@@ -1,4 +1,91 @@
 /* ============================================================
+   自托管等宽字体 —— Menlo（代码块 / 行内代码 + 编辑器英文与数字）
+   字体文件位于项目 asset/fonts/Menlo/，由 Vite 打包为资源。
+   ============================================================ */
+@font-face {
+  font-family: 'Menlo';
+  src: url('../asset/fonts/Menlo/Menlo-Regular-1.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Menlo';
+  src: url('../asset/fonts/Menlo/Menlo-Bold-2.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Menlo';
+  src: url('../asset/fonts/Menlo/Menlo-Italic-4.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Menlo';
+  src: url('../asset/fonts/Menlo/Menlo-BoldItalic-3.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* ============================================================
+   自托管苹方字体 —— PingFang SC（简体 6 字重，woff2）
+   界面中英文 + 编辑器中文由它承载（文件在 asset/fonts/PingFangSC/）；
+   同一 family 下按 font-weight 命中对应字重文件。
+   ============================================================ */
+@font-face {
+  font-family: 'PingFang SC';
+  src: url('../asset/fonts/PingFangSC/PingFangSC-Ultralight.woff2')
+    format('woff2');
+  font-weight: 100;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'PingFang SC';
+  src: url('../asset/fonts/PingFangSC/PingFangSC-Thin.woff2')
+    format('woff2');
+  font-weight: 200;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'PingFang SC';
+  src: url('../asset/fonts/PingFangSC/PingFangSC-Light.woff2')
+    format('woff2');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'PingFang SC';
+  src: url('../asset/fonts/PingFangSC/PingFangSC-Regular.woff2')
+    format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'PingFang SC';
+  src: url('../asset/fonts/PingFangSC/PingFangSC-Medium.woff2')
+    format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'PingFang SC';
+  src: url('../asset/fonts/PingFangSC/PingFangSC-Semibold.woff2')
+    format('woff2');
+  font-weight: 600 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ============================================================
    设计令牌 —— 冷调极简（Notion / Linear 风格）
    ============================================================ */
 :root {
@@ -38,17 +125,17 @@
   --radius-lg: 10px;
   --shadow-pop: 0 1px 2px rgba(15, 15, 15, 0.05), 0 8px 24px rgba(15, 15, 15, 0.09);
 
+  /* 全局界面字体：中英文统一本地苹方 PingFang SC（自托管 6 字重）；系统字体兜底 */
   --font-sans:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
-    'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial,
-    sans-serif;
-  --font-mono: Menlo, ui-monospace, 'SF Mono', 'Cascadia Code', Consolas,
-    monospace;
-  /* 笔记写作 / 内容展示字体：英文 Menlo，汉字仿宋（含各平台别名回退） */
+    'PingFang SC', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  /* 等宽字体（代码块 / 行内代码）：英文 Menlo（自托管），代码内中文兜底苹方 */
+  --font-mono: 'Menlo', ui-monospace, 'SF Mono', 'Cascadia Code', Consolas,
+    'PingFang SC', monospace;
+  /* 编辑器正文：英文 / 数字用 Menlo（自托管等宽），汉字为苹方 PingFang SC */
   --font-content:
-    Menlo, 'FangSong', '仿宋', 'STFangsong', 'Fangsong', 'FangSong SC',
-    -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
-    sans-serif;
+    'Menlo', 'PingFang SC', -apple-system, 'Segoe UI', 'Microsoft YaHei',
+    'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
 
 /* ============================================================

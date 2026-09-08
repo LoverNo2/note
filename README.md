@@ -11,8 +11,7 @@ Vite 中间件读写（`npm run dev` / `npm run preview` 自带）。
   无序 / 有序列表（`Tab` 缩进、`Shift+Tab` 退级），行内强调：粗体 / 斜体 / 删除线 / 行内代码
 - ↩️ **所见即所得块式编辑**：自研 contenteditable 引擎，回车自动续列表、标题回车转正文、空项回车退出列表/引用
 - 🗄 **笔记存放在项目里**：`notes/` 目录每篇一个 JSON 文件，启动时自动载入；
-  「保存」（`⌘S`）把当前全部笔记写回该目录（新增/更新写文件，已删除的笔记同步移除文件）
-- 📥 **导入**：支持从旧备份（整包 JSON）导入，按 id 合并去重，导入后点「保存」即可落盘
+  按 `⌘S` / `Ctrl+S` 把当前全部笔记写回该目录（新增/更新写文件，已删除的笔记同步移除文件）
 - 🎨 **冷调极简视觉**：白底编辑、克制蓝强调色、细边框、轻盈滚动条
 - ⌨️ **快捷键**：`⌘N` / `Ctrl+N` 新建；`⌘S` / `Ctrl+S` 保存到项目；`⌘Z` / `Ctrl+Z` 撤销；`⇧⌘Z` / `Ctrl+Y` 重做
 - 🧱 技术栈：`Vue 3`（Composition API）· `TypeScript` · `Vite`，自研轻量组件，无多余依赖
@@ -38,12 +37,10 @@ npm test         # 编辑器引擎与 HTML 兼容层的冒烟测试（jsdom）
 
 - 笔记以**每篇一个 JSON 文件**存放在项目 `notes/` 目录（文件名即笔记 id，内容为单条
   笔记的规范化 JSON）。启动时应用会自动读取该目录全部笔记；编辑内容在保存前仅存在内存。
-- 「保存」（`⌘S`）把当前**全部**笔记同步回 `notes/`：新增/更新的笔记写为文件，
+- 按 `⌘S` / `Ctrl+S` 把当前**全部**笔记同步回 `notes/`：新增/更新的笔记写为文件，
   已从列表删除的笔记其对应文件也会被移除。建议编辑重要内容后及时保存。
 - 该读写由内置的 Vite 中间件提供（`GET /api/notes`、`PUT /api/notes`），
   `npm run dev` 与 `npm run preview` 均已挂载；若改用其它方式部署，需要提供相同接口。
-- 「导入」兼容旧版整包备份（带 `app: "notebook"` 标识与 `version` 字段，导入时校验），
-  导入内容先合入内存，点「保存」后写入 `notes/` 目录。
 - 正文以**规范化 HTML** 存储（标题/引用/代码块等块结构与行内强调），旧版本的纯文本笔记
   在首次打开时会自动迁移为段落，无需手动处理。
 
@@ -57,7 +54,7 @@ npm test         # 编辑器引擎与 HTML 兼容层的冒烟测试（jsdom）
     ├── main.ts                 # 应用入口
     ├── App.vue                 # 布局 + 欢迎空态 + 快捷键 + Toast
     ├── style.css               # 设计令牌（CSS 变量）与共享控件
-    ├── types.ts                # Note / BackupFile 类型
+    ├── types.ts                # Note 类型
     ├── editor/
     │   ├── html.ts             # HTML 规范化 / 迁移 / 文本提取
     │   └── blocks.ts           # 自研块编辑器引擎（DOM 受控操作）
@@ -65,11 +62,11 @@ npm test         # 编辑器引擎与 HTML 兼容层的冒烟测试（jsdom）
     │   ├── format.ts            # 时间与摘要格式化
     │   └── backup.ts            # 备份载荷构造与建议文件名
     ├── composables/
-    │   ├── useNotes.ts          # 单例状态层：CRUD（内存）、导入
+    │   ├── useNotes.ts          # 单例状态层：CRUD（内存）、写回项目
     │   ├── useFileSave.ts       # 保存到本地文件：句柄 + IndexedDB + 原地覆盖 + 降级
     │   └── useToast.ts          # 全局轻提示
     └── components/
-        ├── AppBar.vue          # 顶部栏：笔记切换 / 新建 / 删除 / 导入 / 保存与另存为
+        ├── AppBar.vue          # 顶部栏：笔记切换 / 新建 / 删除
         ├── NoteToolbar.vue     # 顶部格式工具条（预设样式按钮）
         ├── NoteEditor.vue      # 编辑区：标题 + 块编辑器
         └── Icon.vue            # 轻量内联 SVG 图标

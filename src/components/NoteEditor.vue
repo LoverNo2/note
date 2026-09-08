@@ -45,7 +45,7 @@ const contentEl = ref<HTMLDivElement | null>(null);
 
 const ui = reactive<ToolbarUi>(emptyToolbarUi());
 
-/* ================= 标题 / 保存状态 ================= */
+/* ================= 标题 / 字数 ================= */
 
 const titleModel = computed<string>({
   get: () => currentNote.value?.title ?? "",
@@ -192,7 +192,7 @@ function flushSync(): void {
   snapshotCurrent();
 }
 
-/* 外部（如导入）修改了当前笔记内容时刷新编辑区 */
+/* 外部修改了当前笔记内容时刷新编辑区 */
 watch(
   () => currentNote.value?.content,
   (value) => {
