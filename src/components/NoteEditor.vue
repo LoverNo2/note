@@ -10,6 +10,8 @@ import {
 } from "vue";
 import NoteToolbar from "./NoteToolbar.vue";
 import type { ToolbarAction } from "./NoteToolbar.vue";
+import StyleSettings from "./StyleSettings.vue";
+import { useNoteStyles } from "../composables/useNoteStyles";
 import type { BlockKind, InlineMark, ToolbarUi } from "../editor/blocks";
 import {
   caretTextIndex,
@@ -39,6 +41,8 @@ import { useToast } from "../composables/useToast";
 
 const { currentNote, markEdited } = useNotes();
 const { toast } = useToast();
+/** 正文与标题的可视化样式（CSS 变量实时注入 .note-content） */
+const { cssVars } = useNoteStyles();
 
 const titleInput = ref<HTMLInputElement | null>(null);
 const contentEl = ref<HTMLDivElement | null>(null);
@@ -389,37 +393,45 @@ onBeforeUnmount(() => {
 
     <div class="editor__body">
       <div class="page">
-        <input
-          ref="titleInput"
-          v-model="titleModel"
-          class="title"
-          type="text"
-          maxlength="200"
-          placeholder="无标题"
-          @input="onTitleInput"
-          @keydown.enter.prevent="onTitleEnter"
-        />
+        <!-- 滚动区：内容只在 padding 内侧可见，超出即裁切 -->
+        <div class="page__content">
+          <input
+            ref="titleInput"
+            v-model="titleModel"
+            class="title"
+            type="text"
+            maxlength="200"
+            placeholder="无标题"
+            @input="onTitleInput"
+            @keydown.enter.prevent="onTitleEnter"
+          />
 
-        <div
-          ref="contentEl"
-          class="note-content"
-          contenteditable="true"
-          spellcheck="false"
-          role="textbox"
-          aria-multiline="true"
-          data-placeholder="开始记录一些想法…"
-          @input="onContentInput"
-          @keydown="onKeydown"
-          @paste="onPaste"
-          @click="refreshUi"
-          @keyup="refreshUi"
-          @focus="refreshUi"
-          @blur="onBlur"
-        ></div>
+          <div
+            ref="contentEl"
+            class="note-content"
+            contenteditable="true"
+            spellcheck="false"
+            role="textbox"
+            aria-multiline="true"
+            data-placeholder="开始记录一些想法…"
+            :style="cssVars"
+            @input="onContentInput"
+            @keydown="onKeydown"
+            @paste="onPaste"
+            @click="refreshUi"
+            @keyup="refreshUi"
+            @focus="refreshUi"
+            @blur="onBlur"
+          ></div>
+        </div>
 
+        <!-- 页脚：固定在页面底部 padding 条内、右下角，不随内容滚动 -->
         <p class="page__foot">共 {{ wordCount }} 字</p>
       </div>
     </div>
+
+    <!-- 正文与标题样式设置（右上角悬浮入口） -->
+    <StyleSettings />
   </div>
 </template>
 
@@ -429,18 +441,43 @@ onBeforeUnmount(() => {
   flex-direction: column;
   height: 100%;
   min-width: 0;
+  position: relative; /* 供右上角样式设置悬浮定位 */
 }
 
-/* ---------- 正文滚动区 ---------- */
+/* ---------- 页面视口 ---------- */
+/* editor__body 不再自身滚动：滚动被限制在 .page__content（padding 内侧），
+   内容滚出 padding 内侧可视区即被裁剪隐藏；上下左右留白始终干净。 */
 .editor__body {
   flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 34px 56px 0;
+  overflow: hidden;
+}
+
+/* 滚动内容区：可滚动的只有这里，四边 padding 均不参与滚动 */
+.page__content {
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
 }
 
-.page {
-  margin: 0 auto;
-  padding: 34px 56px 90px;
+/* 页脚：固定在页面底部 padding 条内（右下角），不随内容滚动 */
+.page__foot {
+  flex: none;
+  height: 40px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  font-size: 12px;
+  color: var(--text-faint);
 }
 
 .title {
@@ -461,13 +498,6 @@ onBeforeUnmount(() => {
 .title::placeholder {
   color: var(--text-faint);
   font-weight: 600;
-}
-
-.page__foot {
-  margin: 30px 0 0;
-  text-align: right;
-  font-size: 12px;
-  color: var(--text-faint);
 }
 
 /* 正文内容区域（内部块的排版样式见 src/style.css 全局定义） */

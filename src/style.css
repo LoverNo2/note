@@ -357,34 +357,65 @@ textarea {
   line-height: 1.8;
 }
 
-/* 段落 */
+/* 段落（正文块；变量由 useNoteStyles 实时注入） */
 .note-content p {
   margin: 0 0 6px;
 }
 .note-content p:empty {
   margin: 0;
 }
-
-/* 标题 */
-.note-content h1,
-.note-content h2,
-.note-content h3 {
-  font-weight: 700;
-  letter-spacing: -0.012em;
-  line-height: 1.4;
+.note-content > p {
+  font-size: var(--p-fs, 16px);
+  font-weight: var(--p-fw, 400);
+  line-height: var(--p-lh, 1.8);
+  color: var(--p-color, var(--text-strong));
+  font-style: var(--p-italic, normal);
+  text-decoration-line: var(--p-dec, none);
+  letter-spacing: var(--p-ls, 0.005em);
+  text-align: var(--p-align, left);
+  text-indent: var(--p-indent, 0em);
+  margin-bottom: var(--p-mb, 6px);
 }
+.note-content > p:empty {
+  /* 空的占位段落不参与段间距，保持紧凑 */
+  margin-bottom: 0;
+}
+
+/* 标题（h1/h2/h3 块；变量由 useNoteStyles 实时注入） */
 .note-content h1 {
-  font-size: 1.65em;
+  font-size: var(--h1-fs, 26px);
+  font-weight: var(--h1-fw, 700);
+  line-height: var(--h1-lh, 1.4);
+  color: var(--h1-color, var(--text-strong));
+  font-style: var(--h1-italic, normal);
+  text-decoration-line: var(--h1-dec, none);
+  letter-spacing: var(--h1-ls, -0.012em);
+  text-align: var(--h1-align, left);
+  text-indent: var(--h1-indent, 0em);
   margin: 0.9em 0 0.4em;
 }
 .note-content h2 {
-  font-size: 1.35em;
-  font-weight: 650;
+  font-size: var(--h2-fs, 22px);
+  font-weight: var(--h2-fw, 650);
+  line-height: var(--h2-lh, 1.4);
+  color: var(--h2-color, var(--text-strong));
+  font-style: var(--h2-italic, normal);
+  text-decoration-line: var(--h2-dec, none);
+  letter-spacing: var(--h2-ls, -0.012em);
+  text-align: var(--h2-align, left);
+  text-indent: var(--h2-indent, 0em);
   margin: 0.85em 0 0.35em;
 }
 .note-content h3 {
-  font-size: 1.16em;
-  font-weight: 620;
+  font-size: var(--h3-fs, 19px);
+  font-weight: var(--h3-fw, 620);
+  line-height: var(--h3-lh, 1.4);
+  color: var(--h3-color, var(--text-strong));
+  font-style: var(--h3-italic, normal);
+  text-decoration-line: var(--h3-dec, none);
+  letter-spacing: var(--h3-ls, -0.012em);
+  text-align: var(--h3-align, left);
+  text-indent: var(--h3-indent, 0em);
   margin: 0.8em 0 0.3em;
 }
 .note-content > h1:first-child,
@@ -467,7 +498,7 @@ textarea {
 /* 行内强调 */
 .note-content b,
 .note-content strong {
-  font-weight: 650;
+  font-weight: bolder;
 }
 .note-content s,
 .note-content strike,
