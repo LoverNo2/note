@@ -1,0 +1,162 @@
+<script setup lang="ts">
+import { onBeforeUnmount, onMounted } from 'vue'
+import NoteSidebar from './components/NoteSidebar.vue'
+import NoteEditor from './components/NoteEditor.vue'
+import Icon from './components/Icon.vue'
+import { useNotes } from './composables/useNotes'
+import { useToast } from './composables/useToast'
+import { useFileSave } from './composables/useFileSave'
+
+const { currentNote, createNote, ensurePersisted } = useNotes()
+const { toasts, toast } = useToast()
+const { init: initFileTarget, saveAll } = useFileSave()
+
+function onCreateFirst(): void {
+  createNote()
+  toast('已新建笔记', 'success')
+}
+
+/** 全局快捷键：⌘N / Ctrl+N 新建；⌘S / Ctrl+S 保存到文件（原地覆盖，不弹另存为） */
+function onKeydown(e: KeyboardEvent): void {
+  const mod = e.metaKey || e.ctrlKey
+  if (!mod) return
+  const key = e.key.toLowerCase()
+  if (key === 'n') {
+    e.preventDefault()
+    onCreateFirst()
+  } else if (key === 's' && currentNote.value) {
+    e.preventDefault()
+    void saveAll()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
+  // 页面关闭 / 刷新前兜底一次落盘，避免防抖窗口内丢失
+  window.addEventListener('beforeunload', ensurePersisted)
+  // 恢复上次「保存到文件」的目标（IndexedDB 中的已授权句柄）
+  void initFileTarget()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('beforeunload', ensurePersisted)
+})
+</script>
+
+<template>
+  <div class="app">
+    <div class="app__sidebar">
+      <NoteSidebar />
+    </div>
+
+    <main class="app__main">
+      <!-- 切换笔记时通过 key 重建编辑区，保证输入焦点与高度状态干净 -->
+      <NoteEditor v-if="currentNote" :key="currentNote.id" />
+
+      <section v-else class="welcome">
+        <span class="welcome__icon">
+          <Icon name="file" :size="28" />
+        </span>
+        <h1 class="welcome__title">欢迎使用笔记本</h1>
+        <p class="welcome__desc">
+          你的笔记保存在浏览器本地，输入即自动保存。左侧可随时将全部笔记
+          导出为 JSON 备份，或从备份恢复。
+        </p>
+        <button class="btn-primary" @click="onCreateFirst">
+          <Icon name="plus" :size="15" />
+          新建第一条笔记
+        </button>
+        <p class="welcome__hint">快捷键 <span class="kbd">⌘</span> / <span class="kbd">Ctrl</span> + <span class="kbd">N</span></p>
+      </section>
+    </main>
+
+    <!-- 全局轻提示 -->
+    <div class="toast-list">
+      <div
+        v-for="t in toasts"
+        :key="t.id"
+        class="toast"
+        :class="`toast--${t.type}`"
+      >
+        <span class="toast__dot"></span>
+        {{ t.text }}
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.app {
+  display: flex;
+  height: 100%;
+  min-width: 0;
+}
+
+.app__sidebar {
+  width: 282px;
+  flex: none;
+  min-width: 0;
+  border-right: 1px solid var(--border);
+  background: var(--bg-sidebar);
+}
+
+.app__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-canvas);
+}
+
+/* ---------- 欢迎空态 ---------- */
+.welcome {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 40px;
+  text-align: center;
+}
+.welcome__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+.welcome__title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.welcome__desc {
+  margin: 6px 0 18px;
+  max-width: 400px;
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--text-mid);
+}
+.welcome__hint {
+  margin: 14px 0 0;
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+.kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--bg-canvas);
+  font-size: 11.5px;
+  color: var(--text-mid);
+}
+</style>
