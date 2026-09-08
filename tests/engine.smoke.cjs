@@ -187,6 +187,43 @@ console.log('F. 标题内回车 → 后续为正文段落')
 }
 
 reset()
+console.log('H. 行首 / 行尾回车语义')
+{
+  // 行尾回车：应在段落之后追加一个可输入的空行
+  const el = editorWith('<p>hello</p>')
+  const tn = el.querySelector('p').firstChild
+  const r1 = document.createRange()
+  r1.setStart(tn, 5)
+  r1.collapse(true)
+  const s1 = window.getSelection()
+  s1.removeAllRanges()
+  s1.addRange(r1)
+  blocks.handleEnterKey(el)
+  assert.strictEqual(el.children.length, 2)
+  assert.strictEqual(el.children[0].textContent, 'hello')
+  assert.strictEqual(el.children[1].tagName, 'P')
+  assert.ok(!el.children[1].textContent.trim())
+  check('H1 行尾回车在下方追加空行', () => {})
+
+  // 行首回车：应在段落上方插入空行，且光标落在该空行内
+  const el2 = editorWith('<p>hello</p>')
+  const tn2 = el2.querySelector('p').firstChild
+  const r2 = document.createRange()
+  r2.setStart(tn2, 0)
+  r2.collapse(true)
+  const s2 = window.getSelection()
+  s2.removeAllRanges()
+  s2.addRange(r2)
+  blocks.handleEnterKey(el2)
+  assert.strictEqual(el2.children.length, 2)
+  assert.ok(!el2.children[0].textContent.trim())
+  assert.strictEqual(el2.children[1].textContent, 'hello')
+  const caretBlock = blocks.resolveBlock(el2)
+  assert.ok(caretBlock && !caretBlock.textContent.trim())
+  check('H2 行首回车在上方插入空行并聚焦', () => {})
+}
+
+reset()
 console.log('G. 分割线插入')
 {
   const el = editorWith('<p>前文</p><p>后文</p>')

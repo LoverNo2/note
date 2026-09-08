@@ -227,6 +227,23 @@ function textAfterCaretInBlock(block: HTMLElement, caret: Range): boolean {
   return false
 }
 
+function textBeforeCaretInBlock(block: HTMLElement, caret: Range): boolean {
+  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT)
+  let n: Node | null = walker.nextNode()
+  let anyBefore = false
+  while (n) {
+    const text = n.textContent ?? ''
+    if (n === caret.startContainer) {
+      const before = text.slice(0, caret.startOffset)
+      if (before.trim()) return true
+      return anyBefore
+    }
+    if (text.trim()) anyBefore = true
+    n = walker.nextNode()
+  }
+  return anyBefore
+}
+
 function setCaretAfterNode(node: Node): void {
   const range = document.createRange()
   if (node.parentNode) {
@@ -654,7 +671,45 @@ export function handleEnterKey(editor: HTMLElement): boolean {
     return true
   }
 
-  // 2) 非空块：切出光标后的内容
+  // 2) 非空块：先判断光标在行首 / 行尾 / 行中
+  const hasBefore = textBeforeCaretInBlock(block, caret)
+  const hasAfter = textAfterCaretInBlock(block, caret)
+
+  // —— 行首回车：在上方插入一个空行（当前块整体下移），光标停在上方新行 ——
+  if (!hasBefore) {
+    if (block.tagName === 'LI') {
+      const list = block.parentElement as HTMLElement | null
+      const li = document.createElement('li')
+      ensureBrForEmpty(li)
+      if (list) list.insertBefore(li, block)
+      else block.before(li)
+      placeCaretAtStartOf(li)
+      return true
+    }
+    const lead = newParagraph()
+    block.before(lead)
+    placeCaretAtStartOf(lead)
+    return true
+  }
+
+  // —— 行尾回车：在下方追加新行（段落/标题；列表续项；引用末尾退出为正文） ——
+  if (!hasAfter) {
+    if (block.tagName === 'LI') {
+      const list = block.parentElement as HTMLElement | null
+      const li = document.createElement('li')
+      ensureBrForEmpty(li)
+      if (list) list.insertBefore(li, block.nextSibling)
+      else block.after(li)
+      placeCaretAtStartOf(li)
+      return true
+    }
+    const next = newParagraph()
+    block.after(next)
+    placeCaretAtStartOf(next)
+    return true
+  }
+
+  // —— 行中回车：从光标处拆成两段 ——
   const rest = extractAfterCaret(block, caret)
 
   if (block.tagName === 'LI') {

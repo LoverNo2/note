@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted } from 'vue'
-import NoteSidebar from './components/NoteSidebar.vue'
+import AppBar from './components/AppBar.vue'
 import NoteEditor from './components/NoteEditor.vue'
 import { useNotes } from './composables/useNotes'
 import { useToast } from './composables/useToast'
 import { useFileSave } from './composables/useFileSave'
 
-const { currentNote, createNote, ensurePersisted } = useNotes()
-const { toasts, toast } = useToast()
+const { currentNote, createNote } = useNotes()
+const { toast } = useToast()
 const { init: initFileTarget, saveAll } = useFileSave()
 
 function onCreateFirst(): void {
@@ -31,23 +31,18 @@ function onKeydown(e: KeyboardEvent): void {
 
 onMounted(() => {
   window.addEventListener('keydown', onKeydown)
-  // 页面关闭 / 刷新前兜底一次落盘，避免防抖窗口内丢失
-  window.addEventListener('beforeunload', ensurePersisted)
   // 恢复上次「保存到文件」的目标（IndexedDB 中的已授权句柄）
   void initFileTarget()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
-  window.removeEventListener('beforeunload', ensurePersisted)
 })
 </script>
 
 <template>
   <div class="app">
-    <div class="app__sidebar">
-      <NoteSidebar />
-    </div>
+    <AppBar />
 
     <main class="app__main">
       <!-- 切换笔记时通过 key 重建编辑区，保证输入焦点与高度状态干净 -->
@@ -57,47 +52,27 @@ onBeforeUnmount(() => {
         <span class="welcome__logo">笔记本</span>
         <h1 class="welcome__title">欢迎使用</h1>
         <p class="welcome__desc">
-          你的笔记保存在浏览器本地，输入即自动保存。左侧可随时将全部笔记
-          导出为 JSON 备份，或从备份恢复。
+          内容只存在内存中，不会自动落盘。写完请点右上角「保存 / 另存为…」
+          把笔记保存为本地 JSON 文件；下次通过「导入」继续编辑。
         </p>
         <button class="btn-primary" @click="onCreateFirst">新建第一条笔记</button>
         <p class="welcome__hint">快捷键 <span class="kbd">⌘</span> / <span class="kbd">Ctrl</span> + <span class="kbd">N</span></p>
       </section>
     </main>
-
-    <!-- 全局轻提示 -->
-    <div class="toast-list">
-      <div
-        v-for="t in toasts"
-        :key="t.id"
-        class="toast"
-        :class="`toast--${t.type}`"
-      >
-        <span class="toast__dot"></span>
-        {{ t.text }}
-      </div>
-    </div>
   </div>
 </template>
 
 <style scoped>
 .app {
   display: flex;
+  flex-direction: column;
   height: 100%;
   min-width: 0;
 }
 
-.app__sidebar {
-  width: 282px;
-  flex: none;
-  min-width: 0;
-  border-right: 1px solid var(--border);
-  background: var(--bg-sidebar);
-}
-
 .app__main {
   flex: 1;
-  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: var(--bg-canvas);

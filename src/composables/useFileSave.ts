@@ -168,37 +168,75 @@ async function init(): Promise<void> {
   }
 }
 
+/* ---------------- 保存流程（保存 与 另存为 共用） ---------------- */
+
+type PickResult =
+  | { kind: 'picked'; handle: PickerFileHandle }
+  | { kind: 'cancelled' }
+  | { kind: 'unsupported' }
+
+/** 弹系统对话框选择目标；不支持该 API 时返回 unsupported */
+async function pickHandle(): Promise<PickResult> {
+  const picker = getPickerFn()
+  if (!picker) return { kind: 'unsupported' }
+  try {
+    const handle = await picker({
+      suggestedName: defaultBackupName(),
+      types: [{ description: 'JSON 备份文件', accept: { 'application/json': ['.json'] } }],
+    })
+    return { kind: 'picked', handle }
+  } catch (err) {
+    if (isAbortError(err)) return { kind: 'cancelled' } // 用户取消
+    return { kind: 'unsupported' }
+  }
+}
+
+async function rememberTarget(handle: PickerFileHandle): Promise<void> {
+  savedHandle.value = handle
+  savedFileName.value = handle.name
+  try {
+    await idbPut({ name: handle.name, handle })
+  } catch {
+    /* 记忆失败不影响本次写入 */
+  }
+}
+
+/** 原地写入文件；失败（文件被删/移动/占用）时清除记忆并返回 false */
+async function commitWrite(handle: PickerFileHandle, content: string): Promise<boolean> {
+  try {
+    await writeToHandle(handle, content)
+    return true
+  } catch {
+    await resetTarget()
+    return false
+  }
+}
+
+function serializeContent(): string | null {
+  try {
+    return JSON.stringify(buildBackup(notes), null, 2)
+  } catch {
+    return null
+  }
+}
+
+function fallbackDownload(content: string): void {
+  downloadFallback(content)
+  savedFileName.value = defaultBackupName()
+  toast(`已下载备份文件 ${savedFileName.value}`, 'success')
+}
+
 /**
  * 保存全部笔记：
  * - 已有目标句柄 → 原地覆盖写（不再弹窗）
- * - 尚无句柄且浏览器支持 → 弹出系统另存为让用户选位置并授权
+ * - 尚无句柄且浏览器支持 → 弹系统对话框选位置并授权
  * - 浏览器不支持 → 降级为直接下载一份 JSON
- *
- * 成功 / 失败提示会通过全局 toast 反馈。
  */
 async function saveAll(): Promise<void> {
   if (busy.value) return
-
-  let content: string
-  try {
-    content = JSON.stringify(buildBackup(notes), null, 2)
-  } catch {
+  const content = serializeContent()
+  if (content === null) {
     toast('保存失败：无法序列化笔记数据', 'error')
-    return
-  }
-
-  const picker = getPickerFn()
-
-  // 不支持 File System Access API：直接下载
-  if (!picker) {
-    busy.value = true
-    try {
-      downloadFallback(content)
-      savedFileName.value = defaultBackupName()
-      toast(`已下载备份文件 ${savedFileName.value}`, 'success')
-    } finally {
-      busy.value = false
-    }
     return
   }
 
@@ -206,43 +244,59 @@ async function saveAll(): Promise<void> {
   try {
     let handle = savedHandle.value
 
-    // 第一次保存：让用户选择保存位置并授权
     if (!handle) {
-      try {
-        handle = await picker({
-          suggestedName: defaultBackupName(),
-          types: [{ description: 'JSON 备份文件', accept: { 'application/json': ['.json'] } }],
-        })
-      } catch (err) {
-        if (isAbortError(err)) return // 用户取消，静默
-        downloadFallback(content)
-        toast(`已下载备份文件 ${defaultBackupName()}`, 'success')
+      const picked = await pickHandle()
+      if (picked.kind === 'cancelled') return
+      if (picked.kind === 'unsupported') {
+        fallbackDownload(content)
         return
       }
-      savedHandle.value = handle
-      savedFileName.value = handle.name
-      try {
-        await idbPut({ name: handle.name, handle })
-      } catch {
-        /* 记忆失败不影响本次保存 */
-      }
+      handle = picked.handle
+      await rememberTarget(handle)
     }
 
     if (!(await hasWritePermission(handle))) {
       toast('未获得该文件的写入权限，无法保存', 'error')
       return
     }
-
-    try {
-      await writeToHandle(handle, content)
-    } catch {
-      // 文件可能已被移动 / 删除 / 占用：清除记忆，下次重新选择
-      await resetTarget()
+    if (!(await commitWrite(handle, content))) {
       toast('保存失败：文件可能已被移动或删除，请重新保存', 'error')
       return
     }
-
     toast(`已保存到 ${savedFileName.value}`, 'success')
+  } finally {
+    busy.value = false
+  }
+}
+
+/**
+ * 另存为：强制选择一个新位置写入，并把该文件设为之后的保存目标；
+ * 浏览器不支持时降级为直接下载一份 JSON。
+ */
+async function saveAsCopy(): Promise<void> {
+  if (busy.value) return
+  const content = serializeContent()
+  if (content === null) {
+    toast('保存失败：无法序列化笔记数据', 'error')
+    return
+  }
+
+  busy.value = true
+  try {
+    const picked = await pickHandle()
+    if (picked.kind === 'cancelled') return
+    if (picked.kind === 'unsupported') {
+      fallbackDownload(content)
+      return
+    }
+    const handle = picked.handle
+    await rememberTarget(handle)
+
+    if (!(await commitWrite(handle, content))) {
+      toast('保存失败：文件可能已被移动或删除，请重试', 'error')
+      return
+    }
+    toast(`已另存为 ${savedFileName.value}`, 'success')
   } finally {
     busy.value = false
   }
@@ -255,5 +309,6 @@ export function useFileSave() {
     busy,
     init,
     saveAll,
+    saveAsCopy,
   }
 }

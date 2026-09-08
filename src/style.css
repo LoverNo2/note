@@ -42,7 +42,7 @@
     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
     'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial,
     sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas,
+  --font-mono: Menlo, ui-monospace, 'SF Mono', 'Cascadia Code', Consolas,
     monospace;
   /* 笔记写作 / 内容展示字体：英文 Menlo，汉字仿宋（含各平台别名回退） */
   --font-content:

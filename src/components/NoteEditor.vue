@@ -35,12 +35,9 @@ import {
   textFromHtml,
 } from "../editor/html";
 import { useNotes } from "../composables/useNotes";
-import { useFileSave } from "../composables/useFileSave";
 import { useToast } from "../composables/useToast";
-import { formatClock, formatRelativeTime } from "../utils/format";
 
-const { currentNote, requestAutosave, lastSavedAt } = useNotes();
-const { savedFileName, busy, saveAll } = useFileSave();
+const { currentNote, markEdited } = useNotes();
 const { toast } = useToast();
 
 const titleInput = ref<HTMLInputElement | null>(null);
@@ -63,31 +60,8 @@ const wordCount = computed(() => {
   return text.replace(/\s/g, "").length;
 });
 
-const editedText = computed(() => {
-  const note = currentNote.value;
-  return note ? formatRelativeTime(note.updatedAt) : "";
-});
-
-const savedText = computed(() =>
-  lastSavedAt.value !== null ? formatClock(lastSavedAt.value) : "",
-);
-
-const saveLabel = computed(() => {
-  if (busy.value) return "保存中…";
-  return savedFileName.value ? "保存" : "保存到文件";
-});
-
-const saveTitle = computed(() => {
-  if (!savedFileName.value) return "保存到本地文件（首次需选择位置并授权）· ⌘S";
-  return `原地覆盖保存到 ${savedFileName.value} · ⌘S`;
-});
-
-function onSave(): void {
-  void saveAll();
-}
-
 function onTitleInput(): void {
-  requestAutosave();
+  markEdited();
 }
 
 function onTitleEnter(): void {
@@ -166,7 +140,7 @@ function syncNoteFromDom(): void {
   suppressContentWatch = true;
   if (note.content !== html) note.content = html;
   suppressContentWatch = false;
-  requestAutosave();
+  markEdited();
   updateEmptyClass();
 }
 
@@ -410,35 +384,6 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="editor">
-    <!-- 顶栏：最近编辑时间 + 自动保存 + 保存到文件 -->
-    <div class="editor__bar">
-      <span class="bar__edited">{{ editedText }}</span>
-      <span class="bar__right">
-        <transition name="fade">
-          <span v-if="savedText" class="save-hint">
-            <span class="save-hint__dot"></span>
-            {{ savedText }} 已自动保存
-          </span>
-        </transition>
-
-        <span
-          v-if="savedFileName"
-          class="bar__target"
-          :title="`保存到 ${savedFileName}`"
-          >{{ savedFileName }}</span
-        >
-
-        <button
-          class="btn-ghost bar__save"
-          :disabled="busy"
-          :title="saveTitle"
-          @click="onSave"
-        >
-          {{ saveLabel }}
-        </button>
-      </span>
-    </div>
-
     <!-- 顶部格式工具条 -->
     <NoteToolbar :ui="ui" @exec="exec" />
 
@@ -484,71 +429,6 @@ onBeforeUnmount(() => {
   flex-direction: column;
   height: 100%;
   min-width: 0;
-}
-
-/* ---------- 顶栏 ---------- */
-.editor__bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  height: 44px;
-  flex: none;
-  padding: 0 24px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-canvas);
-}
-.bar__edited {
-  font-size: 12.5px;
-  color: var(--text-faint);
-  white-space: nowrap;
-}
-.bar__right {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-.save-hint {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-  color: var(--text-mid);
-  white-space: nowrap;
-}
-.save-hint__dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--success);
-}
-.bar__target {
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  color: var(--text-mid);
-  background: var(--bg-soft);
-  border-radius: 999px;
-  padding: 3px 11px;
-}
-.bar__save {
-  padding: 4px 11px;
-  font-size: 12.5px;
-}
-.bar__save:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.25s ease;
-}
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
 }
 
 /* ---------- 正文滚动区 ---------- */
