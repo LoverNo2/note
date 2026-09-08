@@ -44,6 +44,11 @@
     sans-serif;
   --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas,
     monospace;
+  /* 笔记写作 / 内容展示字体：英文 Menlo，汉字仿宋（含各平台别名回退） */
+  --font-content:
+    Menlo, 'FangSong', '仿宋', 'STFangsong', 'Fangsong', 'FangSong SC',
+    -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+    sans-serif;
 }
 
 /* ============================================================
@@ -255,6 +260,7 @@ textarea {
    笔记正文：块排版（作用于 contenteditable 内的动态内容）
    ============================================================ */
 .note-content {
+  font-family: var(--font-content);
   font-size: 16px;
   line-height: 1.8;
   letter-spacing: 0.005em;

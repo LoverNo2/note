@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { Note } from '../types'
-import Icon from './Icon.vue'
 import { useNotes } from '../composables/useNotes'
 import { useToast } from '../composables/useToast'
 import { textFromHtml } from '../editor/html'
@@ -105,9 +104,7 @@ async function onImportChange(e: Event): Promise<void> {
         </span>
         <span class="brand__name">笔记本</span>
       </span>
-      <button class="icon-btn head-plus" title="新建笔记（⌘N / Ctrl+N）" @click="onCreate">
-        <Icon name="plus" />
-      </button>
+      <button class="btn-primary head-new" title="新建笔记（⌘N / Ctrl+N）" @click="onCreate">新建</button>
     </header>
 
     <nav class="sidebar__list">
@@ -130,12 +127,10 @@ async function onImportChange(e: Event): Promise<void> {
           </span>
           <button
             v-else
-            class="icon-btn note-item__trash"
+            class="mini-btn note-item__delete"
             title="删除这条笔记"
             @click.stop="onTrash(n.id)"
-          >
-            <Icon name="trash" :size="13" />
-          </button>
+          >删除</button>
         </div>
 
         <div class="note-item__sub">
@@ -146,20 +141,14 @@ async function onImportChange(e: Event): Promise<void> {
 
       <div v-if="count === 0" class="sidebar__empty">
         <p>暂无笔记</p>
-        <p class="sidebar__empty-sub">点击右上角「+」新建第一条笔记</p>
+        <p class="sidebar__empty-sub">点击右上角「新建」创建第一条笔记</p>
       </div>
     </nav>
 
     <footer class="sidebar__foot">
       <div class="sidebar__ops">
-        <button class="btn-ghost" title="将全部笔记导出为 JSON 备份文件" @click="onExport">
-          <Icon name="download" :size="14" />
-          导出
-        </button>
-        <button class="btn-ghost" title="从 JSON 备份文件导入笔记" @click="openImport">
-          <Icon name="upload" :size="14" />
-          导入
-        </button>
+        <button class="btn-ghost" title="将全部笔记导出为 JSON 备份文件" @click="onExport">导出</button>
+        <button class="btn-ghost" title="从 JSON 备份文件导入笔记" @click="openImport">导入</button>
       </div>
       <p class="sidebar__meta">
         {{ count }} 条笔记 · 自动保存于本机
@@ -220,12 +209,9 @@ async function onImportChange(e: Event): Promise<void> {
   letter-spacing: -0.01em;
   white-space: nowrap;
 }
-.head-plus {
-  margin-right: 2px;
-  border: 1px solid transparent;
-}
-.head-plus:hover {
-  border-color: var(--border);
+.head-new {
+  padding: 5px 12px;
+  font-size: 13px;
 }
 
 /* ---------- 列表 ---------- */
@@ -258,6 +244,7 @@ async function onImportChange(e: Event): Promise<void> {
 .note-item__title {
   flex: 1;
   min-width: 0;
+  font-family: var(--font-content);
   font-size: 14px;
   font-weight: 550;
   white-space: nowrap;
@@ -268,13 +255,13 @@ async function onImportChange(e: Event): Promise<void> {
   font-weight: 600;
 }
 
-.note-item__trash {
-  width: 24px;
-  height: 24px;
+.note-item__delete {
   opacity: 0;
+  padding: 2px 7px;
+  transition: opacity 0.12s ease;
 }
-.note-item:hover .note-item__trash,
-.note-item:focus-within .note-item__trash {
+.note-item:hover .note-item__delete,
+.note-item:focus-within .note-item__delete {
   opacity: 1;
 }
 
@@ -295,6 +282,7 @@ async function onImportChange(e: Event): Promise<void> {
 .note-item__summary {
   flex: 1;
   min-width: 0;
+  font-family: var(--font-content);
   font-size: 12.5px;
   color: var(--text-mid);
   white-space: nowrap;

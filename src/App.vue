@@ -2,7 +2,6 @@
 import { onBeforeUnmount, onMounted } from 'vue'
 import NoteSidebar from './components/NoteSidebar.vue'
 import NoteEditor from './components/NoteEditor.vue'
-import Icon from './components/Icon.vue'
 import { useNotes } from './composables/useNotes'
 import { useToast } from './composables/useToast'
 import { useFileSave } from './composables/useFileSave'
@@ -55,18 +54,13 @@ onBeforeUnmount(() => {
       <NoteEditor v-if="currentNote" :key="currentNote.id" />
 
       <section v-else class="welcome">
-        <span class="welcome__icon">
-          <Icon name="file" :size="28" />
-        </span>
-        <h1 class="welcome__title">欢迎使用笔记本</h1>
+        <span class="welcome__logo">笔记本</span>
+        <h1 class="welcome__title">欢迎使用</h1>
         <p class="welcome__desc">
           你的笔记保存在浏览器本地，输入即自动保存。左侧可随时将全部笔记
           导出为 JSON 备份，或从备份恢复。
         </p>
-        <button class="btn-primary" @click="onCreateFirst">
-          <Icon name="plus" :size="15" />
-          新建第一条笔记
-        </button>
+        <button class="btn-primary" @click="onCreateFirst">新建第一条笔记</button>
         <p class="welcome__hint">快捷键 <span class="kbd">⌘</span> / <span class="kbd">Ctrl</span> + <span class="kbd">N</span></p>
       </section>
     </main>
@@ -120,16 +114,12 @@ onBeforeUnmount(() => {
   padding: 40px;
   text-align: center;
 }
-.welcome__icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 64px;
-  height: 64px;
-  border-radius: 18px;
-  background: var(--accent-soft);
+.welcome__logo {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
   color: var(--accent);
-  margin-bottom: 10px;
+  margin-bottom: 14px;
 }
 .welcome__title {
   margin: 0;
