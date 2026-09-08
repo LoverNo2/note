@@ -5,9 +5,9 @@ import { BACKUP_MAGIC } from '../types'
 /**
  * 笔记状态层（内存单例）。
  *
- * 持久化策略：**不做任何自动本地存储**——内容只存在于内存；
- * 需要落盘时通过「保存 / 另存为…」写入文件（见 useFileSave）。
- * 刷新或关闭页面会丢失未保存的内容。
+ * 持久化模型：不做任何自动存储——内容只存在于内存；
+ * 启动时从项目 notes/ 目录载入（loadFromProject），
+ * 点「保存」时把全部笔记写回该目录（saveToProject）。
  */
 
 /** 生成一个简单且几乎不会冲突的唯一 id */
@@ -79,6 +79,47 @@ function markEdited(): void {
   if (note) note.updatedAt = new Date().toISOString()
 }
 
+/* ---------------- 项目 notes/ 目录读写 ---------------- */
+
+async function loadFromProject(): Promise<'ok' | 'empty' | 'error'> {
+  try {
+    const resp = await fetch('/api/notes')
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+    const data: unknown = await resp.json()
+    const incoming = Array.isArray(data) ? data.filter(isNote) : []
+    // 启动时用项目目录中的笔记替换当前内存
+    state.notes.splice(0, state.notes.length, ...incoming)
+    if (incoming.length > 0) {
+      state.currentId = incoming.reduce((latest, n) =>
+        n.updatedAt > latest.updatedAt ? n : latest,
+      ).id
+    } else {
+      state.currentId = null
+    }
+    return incoming.length > 0 ? 'ok' : 'empty'
+  } catch {
+    return 'error'
+  }
+}
+
+/** 把当前全部笔记手动写回项目 notes/ 目录（每篇一个文件） */
+async function saveToProject(): Promise<'ok' | 'error'> {
+  try {
+    const resp = await fetch('/api/notes', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(state.notes),
+    })
+    if (!resp.ok) {
+      const detail = (await resp.json().catch(() => null)) as { error?: string } | null
+      throw new Error(detail?.error ?? `HTTP ${resp.status}`)
+    }
+    return 'ok'
+  } catch {
+    return 'error'
+  }
+}
+
 /* ---------------- 导入 ---------------- */
 
 function parseBackup(text: string): Note[] {
@@ -140,6 +181,8 @@ export function useNotes() {
     selectNote,
     deleteNote,
     markEdited,
+    loadFromProject,
+    saveToProject,
     importFromFile,
   }
 }

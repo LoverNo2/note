@@ -4,18 +4,26 @@ import AppBar from './components/AppBar.vue'
 import NoteEditor from './components/NoteEditor.vue'
 import { useNotes } from './composables/useNotes'
 import { useToast } from './composables/useToast'
-import { useFileSave } from './composables/useFileSave'
 
-const { currentNote, createNote } = useNotes()
+const { currentNote, createNote, loadFromProject, saveToProject } = useNotes()
 const { toast } = useToast()
-const { init: initFileTarget, saveAll } = useFileSave()
 
 function onCreateFirst(): void {
   createNote()
   toast('已新建笔记', 'success')
 }
 
-/** 全局快捷键：⌘N / Ctrl+N 新建；⌘S / Ctrl+S 保存到文件（原地覆盖，不弹另存为） */
+async function saveProjectShortcut(): Promise<void> {
+  if (!currentNote.value) return
+  const result = await saveToProject()
+  if (result === 'ok') {
+    toast('已保存到项目 notes/ 目录', 'success')
+  } else {
+    toast('保存失败：无法写入项目 notes/ 目录', 'error')
+  }
+}
+
+/** 全局快捷键：⌘N / Ctrl+N 新建；⌘S / Ctrl+S 保存到项目 notes/ 目录 */
 function onKeydown(e: KeyboardEvent): void {
   const mod = e.metaKey || e.ctrlKey
   if (!mod) return
@@ -25,14 +33,19 @@ function onKeydown(e: KeyboardEvent): void {
     onCreateFirst()
   } else if (key === 's' && currentNote.value) {
     e.preventDefault()
-    void saveAll()
+    void saveProjectShortcut()
   }
 }
 
 onMounted(() => {
   window.addEventListener('keydown', onKeydown)
-  // 恢复上次「保存到文件」的目标（IndexedDB 中的已授权句柄）
-  void initFileTarget()
+  // 启动时从项目 notes/ 目录载入笔记
+  void (async () => {
+    const result = await loadFromProject()
+    if (result === 'error') {
+      toast('无法读取项目 notes/：请确认通过 npm run dev 或 npm run preview 启动服务', 'error')
+    }
+  })()
 })
 
 onBeforeUnmount(() => {
@@ -52,8 +65,8 @@ onBeforeUnmount(() => {
         <span class="welcome__logo">笔记本</span>
         <h1 class="welcome__title">欢迎使用</h1>
         <p class="welcome__desc">
-          内容只存在内存中，不会自动落盘。写完请点右上角「保存 / 另存为…」
-          把笔记保存为本地 JSON 文件；下次通过「导入」继续编辑。
+          笔记存放在项目 <span class="kbd">notes/</span> 目录（每篇一个 JSON 文件）。
+          输入后点击右上角「保存」（⌘S）即写回项目；编辑内容在保存前仅存在内存中。
         </p>
         <button class="btn-primary" @click="onCreateFirst">新建第一条笔记</button>
         <p class="welcome__hint">快捷键 <span class="kbd">⌘</span> / <span class="kbd">Ctrl</span> + <span class="kbd">N</span></p>

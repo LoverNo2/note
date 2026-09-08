@@ -219,9 +219,6 @@ textarea {
   pointer-events: none;
 }
 .toast {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   max-width: 340px;
   padding: 9px 14px;
   border-radius: var(--radius-md);
@@ -237,13 +234,6 @@ textarea {
 }
 .toast--error {
   background: rgba(170, 45, 45, 0.95);
-}
-.toast .toast__dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: currentColor;
-  flex: none;
 }
 @keyframes toast-in {
   from {

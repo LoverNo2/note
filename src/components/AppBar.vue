@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { Note } from "../types";
 import { useNotes } from "../composables/useNotes";
-import { useFileSave } from "../composables/useFileSave";
 import { useToast } from "../composables/useToast";
 import { textFromHtml } from "../editor/html";
 import { formatRelativeTime, noteSummary } from "../utils/format";
@@ -14,8 +13,8 @@ const {
   selectNote,
   deleteNote,
   importFromFile,
+  saveToProject,
 } = useNotes();
-const { savedFileName, busy, saveAll, saveAsCopy } = useFileSave();
 const { toasts, toast } = useToast();
 
 /* ---------------- 下拉 ---------------- */
@@ -78,23 +77,23 @@ onBeforeUnmount(() =>
 );
 
 /* ---------------- 文件操作 ---------------- */
-const saveLabel = computed(() => {
-  if (busy.value) return "保存中…";
-  return savedFileName.value ? "保存" : "保存到文件";
-});
+const saving = ref(false);
 
-const saveTitle = computed(() => {
-  if (!currentNote.value) return "";
-  if (!savedFileName.value) return "保存到本地文件（首次需选择位置并授权）· ⌘S";
-  return `原地覆盖保存到 ${savedFileName.value} · ⌘S`;
-});
+const saveLabel = computed(() => (saving.value ? "保存中…" : "保存"));
 
-function onSave(): void {
-  void saveAll();
-}
-
-function onSaveAs(): void {
-  void saveAsCopy();
+async function onSave(): Promise<void> {
+  if (saving.value || !currentNote.value) return;
+  saving.value = true;
+  try {
+    const result = await saveToProject();
+    if (result === "ok") {
+      toast(`已保存 ${sortedNotes.value.length} 篇笔记到项目 notes/ 目录`, "success");
+    } else {
+      toast("保存失败：无法写入项目 notes/ 目录，请确认通过 npm run dev 或 npm run preview 启动", "error");
+    }
+  } finally {
+    saving.value = false;
+  }
 }
 
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -113,7 +112,7 @@ async function onImportChange(e: Event): Promise<void> {
         toast("该备份中没有可导入的笔记", "info");
       } else {
         toast(
-          `导入完成：新增 ${result.added} 条，更新 ${result.updated} 条`,
+          `导入 ${result.added + result.updated} 条，请点「保存」写入项目 notes/`,
           "success",
         );
       }
@@ -203,14 +202,6 @@ async function onImportChange(e: Event): Promise<void> {
     <div class="appbar__right">
       <button
         class="btn-ghost"
-        :disabled="busy || !currentNote"
-        title="另存为一份新的 JSON 备份文件，并作为之后的保存目标"
-        @click="onSaveAs"
-      >
-        另存为…
-      </button>
-      <button
-        class="btn-ghost"
         title="从 JSON 备份导入笔记"
         @click="openImport"
       >
@@ -218,12 +209,10 @@ async function onImportChange(e: Event): Promise<void> {
       </button>
       <button
         class="btn-primary appbar__save"
-        :disabled="busy || !currentNote"
-        :title="saveTitle"
+        :disabled="saving || !currentNote"
+        title="把当前全部笔记写入项目 notes/ 目录（每篇一个 JSON 文件）· ⌘S"
         @click="onSave"
-      >
-        {{ saveLabel }}
-      </button>
+      >{{ saveLabel }}</button>
     </div>
 
     <input
@@ -241,10 +230,7 @@ async function onImportChange(e: Event): Promise<void> {
       :key="t.id"
       class="toast"
       :class="`toast--${t.type}`"
-    >
-      <span class="toast__dot"></span>
-      {{ t.text }}
-    </div>
+    >{{ t.text }}</div>
   </div>
 </template>
 
