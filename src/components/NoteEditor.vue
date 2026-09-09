@@ -296,7 +296,6 @@ function exec(action: ToolbarAction): void {
     case "h1":
     case "h2":
     case "h3":
-    case "blockquote":
     case "codeblock":
     case "bulletList":
     case "orderedList":

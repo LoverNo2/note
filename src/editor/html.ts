@@ -24,7 +24,6 @@ const BLOCK_TAGS = new Set([
   'H4',
   'H5',
   'H6',
-  'BLOCKQUOTE',
   'UL',
   'OL',
   'PRE',
@@ -73,12 +72,18 @@ export function normalizeHtml(html: string): string {
   const body = parseBody(html)
   if (!body) return ''
 
-  // 1) 顶层 div 类容器替换为 p
+  // 1) 顶层 div 类容器替换为 p（历史引用 blockquote 一并转段落）
   const topNodes = Array.from(body.childNodes) as Node[]
   for (const node of topNodes) {
     if (node.nodeType === Node.ELEMENT_NODE) {
       const tag = (node as HTMLElement).tagName
-      if (tag === 'DIV' || tag === 'SECTION' || tag === 'ARTICLE' || tag === 'FIGURE') {
+      if (
+        tag === 'DIV' ||
+        tag === 'SECTION' ||
+        tag === 'ARTICLE' ||
+        tag === 'FIGURE' ||
+        tag === 'BLOCKQUOTE'
+      ) {
         const p = document.createElement('p')
         p.append(...Array.from(node.childNodes))
         node.parentNode?.replaceChild(p, node)
@@ -132,7 +137,7 @@ export function normalizeHtml(html: string): string {
       continue
     }
     const text = el.textContent ?? ''
-    // 空段落 <p> 是合法的结构空行，保留；标题/引用/列表等空块则清除
+    // 空段落 <p> 是合法的结构空行，保留；标题/列表等空块则清除
     const visible = tag === 'P' || tag === 'PRE'
       ? true
       : text.trim().length > 0 || el.querySelector('img') !== null
@@ -228,7 +233,6 @@ const PASTE_SAFE_TAGS = new Set([
   "H4",
   "H5",
   "H6",
-  "BLOCKQUOTE",
   "UL",
   "OL",
   "LI",

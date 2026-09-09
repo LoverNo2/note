@@ -443,14 +443,6 @@ textarea,
   margin-top: 0.3em;
 }
 
-/* 引用 */
-.note-content blockquote {
-  margin: 0.55em 0;
-  padding: 0.1em 0 0.1em 15px;
-  border-left: 3px solid var(--border-strong);
-  color: var(--text-mid);
-}
-
 /* 代码块 */
 .note-content pre {
   margin: 0.7em 0;
@@ -485,7 +477,8 @@ textarea,
 .note-content ul,
 .note-content ol {
   margin: 0.3em 0;
-  padding-left: 1.5em;
+  /* 符号/数字列与正文首行缩进对齐：在默认符号列基础上叠加正文首行缩进 */
+  padding-left: calc(var(--p-indent, 0em) + 1.5em);
 }
 .note-content ul {
   list-style: disc;
@@ -494,7 +487,16 @@ textarea,
   list-style: decimal;
 }
 .note-content li {
-  margin: 0.16em 0;
+  /* 继承正文排版（行高/字号/字距/颜色/对齐等），仅形态上加前缀 */
+  font-size: var(--p-fs, 16px);
+  font-weight: var(--p-fw, 400);
+  line-height: var(--p-lh, 1.8);
+  color: var(--p-color, var(--text-strong));
+  font-style: var(--p-italic, normal);
+  text-decoration-line: var(--p-dec, none);
+  letter-spacing: var(--p-ls, 0.005em);
+  text-align: var(--p-align, left);
+  margin: 0 0 var(--p-mb, 6px);
   padding-left: 0.2em;
 }
 .note-content li::marker {
@@ -505,6 +507,20 @@ textarea,
 .note-content ul ol,
 .note-content ol ol {
   margin: 0.1em 0;
+}
+
+/* 前缀随缩进层级同步变化（嵌套更深则换符号/序号体系） */
+.note-content ul ul {
+  list-style: circle;
+}
+.note-content ul ul ul {
+  list-style: square;
+}
+.note-content ol ol {
+  list-style: lower-alpha;
+}
+.note-content ol ol ol {
+  list-style: lower-roman;
 }
 
 /* 分割线 */

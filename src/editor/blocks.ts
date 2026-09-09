@@ -2,8 +2,8 @@
  * 自研块编辑器 DOM 引擎（contenteditable 之上的一层受控操作）。
  *
  * 约定：
- * - 正文内容顶层只允许块元素：p / h1-h3 / blockquote / ul / ol / pre(code) / hr
- * - 列表项 li 与引用 blockquote 内直接容纳行内内容（不嵌 p）
+ * - 正文内容顶层只允许块元素：p / h1-h3 / ul / ol / pre(code) / hr
+ * - 列表项 li 内直接容纳行内内容（不嵌 p）
  * - 引擎只做 DOM 变换并尽量保留光标所在的文本节点；撤销/重做由调用方维护快照
  */
 
@@ -11,7 +11,6 @@ export type HeadingLevel = 'h1' | 'h2' | 'h3'
 export type BlockKind =
   | 'paragraph'
   | HeadingLevel
-  | 'blockquote'
   | 'codeblock'
   | 'bulletList'
   | 'orderedList'
@@ -63,7 +62,7 @@ export function resolveBlock(editor: HTMLElement): HTMLElement | null {
   while (node && node !== editor) {
     if (node.nodeType === Node.ELEMENT_NODE) {
       const tag = (node as HTMLElement).tagName
-      if (tag === 'LI' || tag === 'PRE' || tag === 'BLOCKQUOTE') return node as HTMLElement
+      if (tag === 'LI' || tag === 'PRE') return node as HTMLElement
       if (tag === 'P' || HEADING_TAGS.includes(tag) || tag === 'DIV') {
         blockCandidate = node as HTMLElement
       }
@@ -82,7 +81,6 @@ export function currentBlockKind(editor: HTMLElement): BlockKind | null {
     return block.closest('OL') ? 'orderedList' : 'bulletList'
   }
   if (tag === 'PRE') return 'codeblock'
-  if (tag === 'BLOCKQUOTE') return 'blockquote'
   if (tag === 'H1' || tag === 'H2' || tag === 'H3') return tag.toLowerCase() as HeadingLevel
   return 'paragraph'
 }
@@ -260,14 +258,7 @@ function replaceBlockWith(block: HTMLElement, tag: string): HTMLElement {
   return el
 }
 
-/** 将段落/标题等包装为带样式的容器 */
-function wrapAsQuote(block: HTMLElement): HTMLElement {
-  const quote = document.createElement('blockquote')
-  quote.append(...Array.from(block.childNodes))
-  block.replaceWith(quote)
-  return quote
-}
-
+/** 将段落等包装为代码块 */
 function wrapAsCode(block: HTMLElement): HTMLElement {
   const pre = document.createElement('pre')
   const code = document.createElement('code')
@@ -275,14 +266,6 @@ function wrapAsCode(block: HTMLElement): HTMLElement {
   pre.appendChild(code)
   block.replaceWith(pre)
   return pre
-}
-
-function unwrapQuoteToParagraph(quote: HTMLElement): HTMLElement {
-  const p = document.createElement('p')
-  p.append(...Array.from(quote.childNodes))
-  ensureBrForEmpty(p)
-  quote.replaceWith(p)
-  return p
 }
 
 function unwrapCodeToParagraph(pre: HTMLElement): HTMLElement {
@@ -307,6 +290,87 @@ function wrapAsList(block: HTMLElement, tag: 'UL' | 'OL'): HTMLElement {
   list.appendChild(li)
   block.replaceWith(list)
   return list
+}
+
+/** 由任意节点向上找最近的“可编辑块”（li/p/标题/pre 等） */
+function blockOfNode(node: Node, editor: HTMLElement): HTMLElement | null {
+  let n: Node | null = node
+  while (n && n !== editor) {
+    if (n.nodeType === Node.ELEMENT_NODE) {
+      const tag = (n as HTMLElement).tagName
+      if (tag === 'LI' || tag === 'PRE') {
+        return n as HTMLElement
+      }
+      if (tag === 'P' || HEADING_TAGS.includes(tag) || tag === 'DIV') {
+        return n as HTMLElement
+      }
+    }
+    n = n.parentNode
+  }
+  return null
+}
+
+/**
+ * 选区覆盖到的顶层块序列。
+ * - 塌缩（只有光标）→ 返回 null（沿用单块逻辑）
+ * - 跨多个顶层段落/标题且中间没有列表/代码块等时返回这些块，
+ *   否则返回 null，避免破坏复杂结构
+ */
+function selectedBlocks(editor: HTMLElement): HTMLElement[] | null {
+  const range = getCaretRange(editor)
+  if (!range) return null
+  // 用 anchor/focus 两端取边界：anchor==focus（纯光标）时为 null，
+  // 反向拖选也不会因 Range 被浏览器折叠而丢失另一端
+  const sel = getSelection()
+  if (!sel || !sel.anchorNode || !sel.focusNode) return null
+  const a = blockOfNode(sel.anchorNode, editor)
+  const b = blockOfNode(sel.focusNode, editor)
+  if (!a || !b || a === b) return null
+  if (a.parentNode !== editor || b.parentNode !== editor) return null
+
+  const kids = Array.from(editor.children)
+  const ia = kids.indexOf(a)
+  const ib = kids.indexOf(b)
+  if (ia < 0 || ib < 0) return null
+  const lo = Math.min(ia, ib)
+  const hi = Math.max(ia, ib)
+  const out: HTMLElement[] = []
+  for (let i = lo; i <= hi; i++) {
+    const block = kids[i] as HTMLElement
+    if (!isPlainBlock(block)) return null
+    out.push(block)
+  }
+  // 去掉首尾的空块：拖选多行时常把上下相邻的空段落夹带进来，
+  // 不应把它们转成“空列表项”多出空行（中间的仍保留）
+  while (out.length > 0 && isEmptyBlock(out[0]!)) out.shift()
+  while (out.length > 0 && isEmptyBlock(out[out.length - 1]!)) out.pop()
+  return out.length > 0 ? out : null
+}
+
+/** 把整段连续的段落/标题块合成为一个列表（每块一项） */
+function wrapBlocksAsList(blocks: HTMLElement[], tag: 'UL' | 'OL'): HTMLElement {
+  const list = document.createElement(tag)
+  for (const block of blocks) {
+    const li = document.createElement('li')
+    li.append(...Array.from(block.childNodes))
+    ensureBrForEmpty(li)
+    list.appendChild(li)
+  }
+  blocks[0]!.replaceWith(list)
+  for (let i = 1; i < blocks.length; i++) blocks[i]!.remove()
+  trimTrailingEmptyItems(list)
+  return list
+}
+
+/** 去掉列表末尾多余的空项（保留至少一项，整表为空则保留一个空项） */
+function trimTrailingEmptyItems(list: HTMLElement): void {
+  const lis = Array.from(list.children).filter(
+    (n) => n.tagName === 'LI',
+  ) as HTMLElement[]
+  for (let i = lis.length - 1; i > 0; i--) {
+    if (isEmptyBlock(lis[i]!)) lis[i]!.remove()
+    else break
+  }
 }
 
 function switchListType(list: HTMLElement, tag: 'UL' | 'OL'): void {
@@ -387,6 +451,16 @@ export function setBlockType(editor: HTMLElement, kind: BlockKind): void {
   // —— 列表类目标 ——
   if (kind === 'bulletList' || kind === 'orderedList') {
     const targetTag = kind === 'bulletList' ? 'UL' : 'OL'
+
+    // 跨多行选区：把选中的所有段落/标题整段转成一个列表
+    const many = selectedBlocks(editor)
+    if (many) {
+      const list = wrapBlocksAsList(many, targetTag)
+      const lastLi = list.lastElementChild
+      if (lastLi) placeCaretAtEndOf(lastLi)
+      return
+    }
+
     if (block.tagName === 'LI') {
       const list = block.parentElement as HTMLElement | null
       if (list && list.tagName !== targetTag && isListTag(list)) {
@@ -408,32 +482,22 @@ export function setBlockType(editor: HTMLElement, kind: BlockKind): void {
     return
   }
 
-  const isQuote = block.tagName === 'BLOCKQUOTE'
   const isCode = block.tagName === 'PRE'
 
   switch (kind) {
     case 'paragraph': {
-      if (isQuote) unwrapQuoteToParagraph(block)
-      else if (isCode) unwrapCodeToParagraph(block)
+      if (isCode) unwrapCodeToParagraph(block)
       else if (HEADING_TAGS.includes(block.tagName)) replaceBlockWith(block, 'p')
       break
     }
     case 'h1':
     case 'h2':
     case 'h3': {
-      if (isQuote || isCode) return // 需先切回正文
+      if (isCode) return // 需先切回正文
       if (block.tagName === kind.toUpperCase()) {
         replaceBlockWith(block, 'p') // toggle：已是该标题 → 还原正文
       } else if (isPlainBlock(block)) {
         replaceBlockWith(block, kind.toUpperCase())
-      }
-      break
-    }
-    case 'blockquote': {
-      if (isQuote) {
-        unwrapQuoteToParagraph(block) // toggle：已是引用 → 还原正文
-      } else if (isPlainBlock(block) && !isCode) {
-        wrapAsQuote(block)
       }
       break
     }
@@ -656,8 +720,8 @@ export function handleEnterKey(editor: HTMLElement): boolean {
       placeCaretAtStartOf(p)
       return true
     }
-    if (block.tagName === 'BLOCKQUOTE' || HEADING_TAGS.includes(block.tagName)) {
-      const p = replaceBlockWith(block, 'p') // 空引用/空标题：清除样式
+    if (HEADING_TAGS.includes(block.tagName)) {
+      const p = replaceBlockWith(block, 'p') // 空标题：清除样式
       placeCaretAtStartOf(p)
       return true
     }
@@ -688,7 +752,7 @@ export function handleEnterKey(editor: HTMLElement): boolean {
     return true
   }
 
-  // —— 行尾回车：在下方追加新行（段落/标题；列表续项；引用末尾退出为正文） ——
+  // —— 行尾回车：在下方追加新行（段落/标题；列表续项） ——
   if (!hasAfter) {
     if (block.tagName === 'LI') {
       const list = block.parentElement as HTMLElement | null
@@ -717,14 +781,6 @@ export function handleEnterKey(editor: HTMLElement): boolean {
     if (list) list.insertBefore(li, block.nextSibling)
     else block.after(li)
     placeCaretAtStartOf(li)
-    return true
-  }
-
-  if (block.tagName === 'BLOCKQUOTE') {
-    // 引用内回车：后续内容落到正文段落（退出引用）
-    const p = newParagraph(rest)
-    block.after(p)
-    placeCaretAtStartOf(p)
     return true
   }
 

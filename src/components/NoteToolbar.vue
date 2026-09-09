@@ -9,7 +9,6 @@ export type ToolbarAction =
   | 'h1'
   | 'h2'
   | 'h3'
-  | 'blockquote'
   | 'codeblock'
   | 'divider'
   | 'bulletList'
@@ -72,13 +71,6 @@ function iconOf(action: ToolbarAction): IconName {
 
     <span class="sep"></span>
 
-    <button
-      class="btn"
-      :class="{ active: isBlockActive('blockquote') }"
-      title="引用块"
-      @mousedown.prevent
-      @click="emit('exec', 'blockquote')"
-    ><Icon :name="iconOf('blockquote')" /></button>
     <button
       class="btn"
       :class="{ active: isBlockActive('codeblock') }"

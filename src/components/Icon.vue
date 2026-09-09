@@ -5,7 +5,6 @@ export type IconName =
   | 'h1'
   | 'h2'
   | 'h3'
-  | 'blockquote'
   | 'codeblock'
   | 'divider'
   | 'bulletList'
@@ -49,13 +48,6 @@ defineProps<{ name: IconName }>()
       stroke="none"
       fill="currentColor"
     >{{ name.toUpperCase() }}</text>
-
-    <!-- 引用块：左侧竖线 + 两行文本 -->
-    <template v-else-if="name === 'blockquote'">
-      <line x1="6.2" y1="7.6" x2="6.2" y2="16.4" />
-      <line x1="9.2" y1="9.6" x2="18.4" y2="9.6" />
-      <line x1="9.2" y1="13.4" x2="15.6" y2="13.4" />
-    </template>
 
     <!-- 代码块：</> 徽标（三字符，用小一号字号避免溢出） -->
     <text
