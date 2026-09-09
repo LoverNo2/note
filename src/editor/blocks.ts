@@ -514,6 +514,59 @@ export function setBlockType(editor: HTMLElement, kind: BlockKind): void {
   }
 }
 
+/** 顶部笔记标题回车：若正文首块是代码块等不可直接当段落输入的块，
+ *  先在其上方插入一个空段落，避免光标直接掉进代码块 */
+export function ensureStartParagraph(editor: HTMLElement): void {
+  const first = editor.firstElementChild as HTMLElement | null
+  if (!first) return
+  if (first.tagName === 'PRE' || first.tagName === 'HR') {
+    const p = newParagraph()
+    editor.insertBefore(p, first)
+  }
+}
+
+/** 区域内最深的最后一个文本节点（用于判定“光标在末尾”） */
+function lastTextNodeOf(container: Node): Text | null {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
+  let last: Text | null = null
+  let n: Node | null = walker.nextNode()
+  while (n) {
+    last = n as Text
+    n = walker.nextNode()
+  }
+  return last
+}
+
+/**
+ * 光标在代码块最后一行行尾并按 ↓ 方向键：若代码块是正文最后一个内容块，
+ * 在其下方新建一个正文段落并把光标移过去（相当于“跳出代码块另起新行”）。
+ * 返回是否已处理；代码块后还有其它内容时返回 false 交给浏览器默认移动光标。
+ */
+export function codeExitOnArrowDown(editor: HTMLElement): boolean {
+  const block = resolveBlock(editor)
+  if (!block || block.tagName !== 'PRE') return false
+  const caret = getCaretRange(editor)
+  if (!caret) return false
+  const last = lastTextNodeOf(block)
+  const atEnd =
+    (last === null && isEmptyBlock(block)) ||
+    (last !== null &&
+      caret.startContainer === last &&
+      caret.startOffset === (last.textContent ?? '').length)
+  if (!atEnd) return false
+
+  let next = block.nextElementSibling as HTMLElement | null
+  while (next && next.tagName === 'HR') {
+    next = next.nextElementSibling as HTMLElement | null
+  }
+  if (next) return false
+
+  const p = newParagraph()
+  block.after(p)
+  placeCaretAtStartOf(p)
+  return true
+}
+
 /* ---------------- 列表缩进 ---------------- */
 
 function indentListItem(li: HTMLElement): void {
@@ -701,12 +754,21 @@ export function insertDivider(editor: HTMLElement): void {
 
 /* ---------------- 回车拆块 ---------------- */
 
-/** 处理 Enter：返回 false 表示交给浏览器默认（代码块内部） */
+/**
+ * 处理 Enter：普通回车在下方新建一行并把光标移过去（代码块除外——
+ * 代码块内回车只换行；返回 false 表示交给浏览器默认行为）
+ */
 export function handleEnterKey(editor: HTMLElement): boolean {
   const block = resolveBlock(editor)
   const caret = getCaretRange(editor)
   if (!block || !caret) return false
-  if (block.tagName === 'PRE') return false // 代码块内回车 = 插入换行
+
+  // —— 代码块 ——
+  if (block.tagName === 'PRE') {
+    // 代码块内回车只在代码块内换行（交给浏览器默认插入换行）。
+    // 想退出到代码块下方新行：在末尾按 ↓（见 codeExitOnArrowDown）
+    return false
+  }
 
   // 有选区时先删除
   if (!caret.collapsed) caret.deleteContents()

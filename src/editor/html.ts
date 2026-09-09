@@ -148,19 +148,27 @@ export function normalizeHtml(html: string): string {
   }
   if (!hasVisible) return ''
 
-  // 4) 去掉末尾连续空段（保留至多一个，供光标停靠）
-  const children = Array.from(body.children)
-  for (let i = children.length - 1; i >= 0; i--) {
-    const el = children[i] as HTMLElement
-    const tag = el.tagName
-    if (tag === 'P' && !(el.textContent ?? '').trim() && !el.querySelector('img')) {
-      if (i === children.length - 1 && i > 0) {
-        el.remove()
+  // 4) 末尾空段规范化：末尾连续的空白 <p> 只保留一个（供光标停靠），
+  //    其余移除；规则幂等，多次 normalize 结果一致。
+  {
+    const kids = Array.from(body.children)
+    let i = kids.length - 1
+    while (i >= 0) {
+      const el = kids[i] as HTMLElement
+      if (el.tagName === 'P' && !(el.textContent ?? '').trim() && !el.querySelector('img')) {
+        i--
       } else {
         break
       }
-    } else {
-      break
+    }
+    // i 指向最后一个非空块；其后的空段只保留一个（下标 i+1），删除多余
+    const keepTail = i >= 0 && i < kids.length - 1
+    if (keepTail) {
+      while (body.children.length - 1 > i + 1) {
+        const tail = body.children[body.children.length - 1]
+        if (tail.tagName === 'P') tail.remove()
+        else break
+      }
     }
   }
 

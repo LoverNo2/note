@@ -1,7 +1,7 @@
 {
   "id": "mtsnr1mh-0y2fpzom",
   "title": "Godot",
-  "content": "<ol><li>hello</li></ol><p>hello<br></p><ul><li>hello<br></li></ul><p>hellohello<br></p><ul><li>hello<br></li></ul>",
+  "content": "<p>引擎的起点是main方法</p><pre><p><span style=\"letter-spacing: 0.005em;\">main()                                    // 平台入口，如 platform/windows/godot_windows.cpp</span></p><p>  → Main::setup()                         // 初始化引擎各层（Core、Servers、Scene、Drivers）\n  → Main::start()                         // 创建 SceneTree（默认 MainLoop），加载主场景\n  → OS::run()                             // 进入主循环</p><code></code></pre><p><br></p>",
   "createdAt": "2026-09-08T12:40:43.769Z",
-  "updatedAt": "2026-09-09T03:03:33.672Z"
+  "updatedAt": "2026-09-09T05:55:50.853Z"
 }

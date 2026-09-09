@@ -14,9 +14,11 @@ import { useNoteStyles } from "../composables/useNoteStyles";
 import type { BlockKind, InlineMark, ToolbarUi } from "../editor/blocks";
 import {
   caretTextIndex,
+  codeExitOnArrowDown,
   currentBlockKind,
   editorHasContent,
   emptyToolbarUi,
+  ensureStartParagraph,
   focusEditorStart,
   getCaretRange,
   handleEnterKey,
@@ -75,8 +77,15 @@ function onTitleInput(): void {
 }
 
 function onTitleEnter(): void {
-  if (contentEl.value) focusEditorStart(contentEl.value);
-  else titleInput.value?.blur();
+  const el = contentEl.value;
+  if (!el) {
+    titleInput.value?.blur();
+    return;
+  }
+  // 正文首块若是代码块/分割线，先在其上方补一个空段落
+  ensureStartParagraph(el);
+  focusEditorStart(el);
+  scheduleSync();
 }
 
 /* ================= 快照历史（撤销 / 重做） ================= */
@@ -213,7 +222,13 @@ watch(
     if (note.id !== mountedNoteId) return;
     const incoming = normalizeHtml(value || "");
     if (incoming === normalizeEditorHtml(el)) return;
+    // 重载前记住光标位置，重载后尽量恢复（避免光标跳回文档开头）
+    const prevCaret = caretTextIndex(el);
+    if (import.meta.env?.DEV) {
+      console.info("[editor] reload note content, caret:", prevCaret);
+    }
     el.innerHTML = incoming || "<p><br></p>";
+    if (prevCaret >= 0) restoreCaretByTextIndex(el, prevCaret);
     updateEmptyClass();
     snapshotCurrent();
     refreshUi();
@@ -348,10 +363,30 @@ function onKeydown(e: KeyboardEvent): void {
   }
   if (mod) return;
 
+  // 代码块最后一行行尾按 ↓：在代码块下方另起新行并跳出代码块
+  if (e.key === "ArrowDown") {
+    if (codeExitOnArrowDown(el)) {
+      e.preventDefault();
+      afterDomChange();
+    }
+    return;
+  }
+
   if (e.key === "Enter") {
     // 输入法组合中按回车是确认候选词，交给浏览器，不做块拆分
     if (e.isComposing || e.keyCode === 229) return;
     if (e.shiftKey) return; // 保留浏览器行为插入 <br>
+    if (import.meta.env?.DEV) {
+      const idx = caretTextIndex(el);
+      console.info(
+        "[enter] caretIdx=",
+        idx,
+        " 全文长度≈",
+        (el.textContent ?? "").length,
+        " html尾:",
+        JSON.stringify(el.innerHTML.slice(-80)),
+      );
+    }
     const handled = handleEnterKey(el);
     if (handled) {
       e.preventDefault();
@@ -492,7 +527,6 @@ onBeforeUnmount(() => {
             spellcheck="false"
             role="textbox"
             aria-multiline="true"
-            data-placeholder="开始记录一些想法…"
             :style="cssVars"
             @input="onContentInput"
             @keydown="onKeydown"
