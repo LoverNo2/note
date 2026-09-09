@@ -193,19 +193,12 @@ function resetBlock(key: TextBlockKey): void {
   state[key] = { ...TEXT_STYLE_DEFAULTS[key] }
 }
 
-function resetAll(): void {
-  for (const key of Object.keys(state) as TextBlockKey[]) {
-    resetBlock(key)
-  }
-}
-
 export function useNoteStyles() {
   return {
     state,
     cssVars,
     update,
     resetBlock,
-    resetAll,
     labels: TEXT_BLOCK_LABELS,
     defaults: TEXT_STYLE_DEFAULTS,
   }

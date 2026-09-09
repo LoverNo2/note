@@ -1,219 +1,403 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+} from "vue";
 import {
   useNoteStyles,
   type TextBlockKey,
   type TextBlockStyle,
-} from '../composables/useNoteStyles'
-import { useToast } from '../composables/useToast'
+} from "../composables/useNoteStyles";
+import { useToast } from "../composables/useToast";
 
-const {
-  state,
-  defaults,
-  resetBlock,
-  resetAll,
-} = useNoteStyles()
-const { toast } = useToast()
+const { state, defaults } = useNoteStyles();
+const { toast } = useToast();
 
 /** 四种块（固定顺序渲染） */
-const BLOCK_KEYS: TextBlockKey[] = ['paragraph', 'h1', 'h2', 'h3']
+const BLOCK_KEYS: TextBlockKey[] = ["paragraph", "h1", "h2", "h3"];
 
-const open = ref(false)
-const rootEl = ref<HTMLElement | null>(null)
+/** 对齐方式（图标分段按钮） */
+const ALIGN_OPTS: ReadonlyArray<{
+  value: TextBlockStyle["align"];
+  label: string;
+  d: readonly string[];
+}> = [
+  { value: "left", label: "左对齐", d: ["M2 4h16", "M2 9h7", "M2 14h10"] },
+  { value: "center", label: "居中", d: ["M5 4h10", "M2 9h16", "M6 14h8"] },
+  { value: "right", label: "右对齐", d: ["M8 4h10", "M3 9h15", "M6 14h12"] },
+  {
+    value: "justify",
+    label: "两端对齐",
+    d: ["M2 3h16", "M2 8h16", "M2 13h16", "M6 18h8"],
+  },
+];
+
+/** 形态（可多选的分段切换） */
+const SHAPE_OPTS: ReadonlyArray<{
+  key: "italic" | "underline" | "strike";
+  label: string;
+  glyph: string;
+  glyphClass: string;
+}> = [
+  {
+    key: "italic",
+    label: "斜体",
+    glyph: "I",
+    glyphClass: "seg-glyph--italic",
+  },
+  {
+    key: "underline",
+    label: "下划线",
+    glyph: "U",
+    glyphClass: "seg-glyph--under",
+  },
+  {
+    key: "strike",
+    label: "删除线",
+    glyph: "S",
+    glyphClass: "seg-glyph--strike",
+  },
+];
+
+function toggleShape(key: "italic" | "underline" | "strike"): void {
+  state[activeKey.value][key] = !state[activeKey.value][key];
+}
+
+const open = ref(false);
+const rootEl = ref<HTMLElement | null>(null);
 /** 当前编辑的块（分段页签） */
-const activeKey = ref<TextBlockKey>('paragraph')
+const activeKey = ref<TextBlockKey>("paragraph");
 
-/* ---------------- 单项目重置 ---------------- */
+/* ---------------- 单项目撤销（相对最近一次保存） ---------------- */
 
-/** 该项当前值是否已偏离默认 */
-function isDefault(key: TextBlockKey, field: keyof TextBlockStyle): boolean {
-  const cur = state[key] as unknown as Record<string, unknown>
-  const def = defaults[key] as unknown as Record<string, unknown>
-  return cur[field] === def[field]
+/** 当前激活自定义样式的最近一次保存记录 */
+function savedSnapOfActive(): StyleSnapshot | undefined {
+  const name = customActive.value;
+  if (!name) return undefined;
+  return snapList.value.find((s) => s.name === name);
 }
 
-/** 恢复单个属性为默认值 */
-function resetField(key: TextBlockKey, field: keyof TextBlockStyle): void {
-  const cur = state[key] as unknown as Record<string, unknown>
-  cur[field] = (defaults[key] as unknown as Record<string, unknown>)[field]
+/** 该项当前值是否与最近保存一致（一致则隐藏单项 ↺ 图标） */
+function isSavedEqual(
+  key: TextBlockKey,
+  field: keyof TextBlockStyle,
+): boolean {
+  const saved = savedSnapOfActive()?.styles?.[key] as
+    | Record<string, unknown>
+    | undefined;
+  if (!saved) return true;
+  const cur = state[key] as unknown as Record<string, unknown>;
+  return cur[field] === saved[field];
 }
 
-/** 形态行（斜体/下划线/删除线）是否全部为默认 */
-function isShapesDefault(key: TextBlockKey): boolean {
+/** 撤销单项改动：恢复为最近一次保存的值 */
+function resetFieldToSaved(
+  key: TextBlockKey,
+  field: keyof TextBlockStyle,
+): void {
+  const saved = savedSnapOfActive()?.styles?.[key] as
+    | Record<string, unknown>
+    | undefined;
+  if (!saved || saved[field] === undefined) return;
+  (state[key] as unknown as Record<string, unknown>)[field] = saved[field];
+}
+
+/** 形态行（斜体/下划线/删除线）是否与最近保存一致 */
+function isShapesSavedEqual(key: TextBlockKey): boolean {
   return (
-    isDefault(key, 'italic') &&
-    isDefault(key, 'underline') &&
-    isDefault(key, 'strike')
-  )
+    isSavedEqual(key, "italic") &&
+    isSavedEqual(key, "underline") &&
+    isSavedEqual(key, "strike")
+  );
 }
 
-function resetShapes(key: TextBlockKey): void {
-  resetField(key, 'italic')
-  resetField(key, 'underline')
-  resetField(key, 'strike')
+/** 撤销形态行改动：恢复为最近保存的三项开关 */
+function resetShapesToSaved(key: TextBlockKey): void {
+  resetFieldToSaved(key, "italic");
+  resetFieldToSaved(key, "underline");
+  resetFieldToSaved(key, "strike");
 }
 
 /** 数值 → 紧凑显示，如 0.005 / -0.012 / 0.1 */
 function fmt(v: number): string {
-  return String(Math.round(v * 1000) / 1000)
+  return String(Math.round(v * 1000) / 1000);
 }
 
 /** range 的当前进度（用于填充色） */
 function pct(min: number, max: number, v: number): string {
-  const p = ((v - min) / (max - min)) * 100
-  return `${Math.min(100, Math.max(0, p))}%`
+  const p = ((v - min) / (max - min)) * 100;
+  return `${Math.min(100, Math.max(0, p))}%`;
 }
 
 /** 鼠标拖完滑块后主动失焦，避免控件残留焦点态 */
 function blurRange(e: MouseEvent): void {
-  ;(e.currentTarget as HTMLInputElement).blur()
+  (e.currentTarget as HTMLInputElement).blur();
 }
 
 /** 按下瞬间先失焦，让整个拖动过程不携带焦点指示 */
 function blurRangeOnDown(e: PointerEvent): void {
-  ;(e.currentTarget as HTMLInputElement).blur()
+  (e.currentTarget as HTMLInputElement).blur();
 }
 
 /** 页签短标签：正文 / H1 / H2 / H3 */
 function tabLabel(key: TextBlockKey): string {
-  return key === 'paragraph' ? '正文' : key.toUpperCase()
+  return key === "paragraph" ? "正文" : key.toUpperCase();
 }
 
-/* ---------------- 命名快照（保存 / 加载） ---------------- */
+/* ---------------- 命名样式（快照持久化） ---------------- */
 
 interface StyleSnapshot {
-  name: string
-  savedAt: string
-  styles: Record<TextBlockKey, TextBlockStyle>
+  name: string;
+  savedAt: string;
+  styles: Record<TextBlockKey, TextBlockStyle>;
 }
 
-const SNAPSHOTS_KEY = 'notebook:textStyles:snapshots:v1'
-
-/** 底部操作区当前展开的子面板：none=无，save=命名保存，load=选择加载 */
-const snapMode = ref<'none' | 'save' | 'load'>('none')
-const snapList = ref<StyleSnapshot[]>([])
-const saveDraft = ref('')
+const SNAPSHOTS_KEY = "notebook:textStyles:snapshots:v1";
+const snapList = ref<StyleSnapshot[]>([]);
 
 function readSnapshots(): StyleSnapshot[] {
   try {
-    const raw = localStorage.getItem(SNAPSHOTS_KEY)
-    if (!raw) return []
-    const parsed: unknown = JSON.parse(raw)
-    return Array.isArray(parsed) ? (parsed as StyleSnapshot[]) : []
+    const raw = localStorage.getItem(SNAPSHOTS_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as StyleSnapshot[]) : [];
   } catch {
-    return []
+    return [];
   }
 }
 
 function persistSnapshots(list: StyleSnapshot[]): void {
   try {
-    localStorage.setItem(SNAPSHOTS_KEY, JSON.stringify(list))
+    localStorage.setItem(SNAPSHOTS_KEY, JSON.stringify(list));
   } catch {
     /* 忽略写入失败 */
   }
 }
 
-function closeSnap(): void {
-  snapMode.value = 'none'
+/** 深拷贝当前四块样式（用于保存 / 比较脏状态） */
+function cloneState(): Record<TextBlockKey, TextBlockStyle> {
+  const out = {} as Record<TextBlockKey, TextBlockStyle>;
+  for (const key of BLOCK_KEYS) out[key] = { ...state[key] };
+  return out;
 }
 
-/** 点「保存样式」：打开命名输入（默认名不与现有重复） */
-function openSave(): void {
-  snapList.value = readSnapshots()
-  const base = `样式 ${snapList.value.length + 1}`
-  saveDraft.value = snapList.value.some((s) => s.name === base)
-    ? `样式 ${snapList.value.length + 2}`
-    : base
-  snapMode.value = 'save'
-}
-
-/** 是否有同名配置（提示会被覆盖） */
-function hasDupName(): boolean {
-  const name = saveDraft.value.trim()
-  return snapList.value.some((s) => s.name === name)
-}
-
-/** 确认保存（同名则覆盖） */
-function commitSave(): void {
-  const name = saveDraft.value.trim()
-  if (!name) {
-    toast('请输入配置名称', 'info')
-    return
+/** 把某份样式配置套用到当前 state（缺项回退到系统默认） */
+function restoreState(
+  src?: Record<TextBlockKey, TextBlockStyle>,
+): void {
+  for (const key of BLOCK_KEYS) {
+    state[key] = { ...(src?.[key] ?? defaults[key]) };
   }
+}
+
+/** 保存/更新一份配置到列表，返回是否同名覆盖 */
+function upsertSnap(name: string): boolean {
   const snap: StyleSnapshot = {
     name,
     savedAt: new Date().toISOString(),
-    styles: JSON.parse(JSON.stringify(state)) as Record<TextBlockKey, TextBlockStyle>,
+    styles: cloneState(),
+  };
+  const idx = snapList.value.findIndex((s) => s.name === name);
+  if (idx >= 0) snapList.value[idx] = snap;
+  else snapList.value.unshift(snap);
+  persistSnapshots(snapList.value);
+  return idx >= 0;
+}
+
+/* ---------------- 激活的样式配置 ---------------- */
+
+/** null = 系统默认样式（只读）；否则为当前自定义样式名 */
+const customActive = ref<string | null>(null);
+/** 是否正在“新建命名中”：选择框位置显示名称输入框 */
+const naming = ref(false);
+const nameDraft = ref("");
+const nameInputEl = ref<HTMLInputElement | null>(null);
+const pickerOpen = ref(false);
+const deletingName = ref<string | null>(null);
+
+/** 默认样式为只读（配置区锁定） */
+const lockedDefault = computed(() => customActive.value === null);
+/** 当前自定义配置相对最近一次保存是否有未保存修改 */
+const dirty = computed(() => {
+  const name = customActive.value;
+  if (!name) return false;
+  const snap = snapList.value.find((s) => s.name === name);
+  if (!snap) return false;
+  return JSON.stringify(snap.styles) !== JSON.stringify(cloneState());
+});
+
+function togglePicker(): void {
+  if (pickerOpen.value) {
+    pickerOpen.value = false;
+    return;
   }
-  const idx = snapList.value.findIndex((s) => s.name === name)
-  if (idx >= 0) snapList.value[idx] = snap
-  else snapList.value.unshift(snap)
-  persistSnapshots(snapList.value)
-  snapMode.value = 'none'
-  toast(idx >= 0 ? `已更新配置「${name}」` : `已保存配置「${name}」`, 'success')
+  snapList.value = readSnapshots();
+  deletingName.value = null;
+  pickerOpen.value = true;
 }
 
-/** 点「加载样式」：展开配置列表 */
-function openLoad(): void {
-  snapList.value = readSnapshots()
-  snapMode.value = 'load'
+/** 切回系统默认样式（不可修改） */
+function applyDefaultStyle(): void {
+  naming.value = false;
+  customActive.value = null;
+  restoreState(defaults);
+  pickerOpen.value = false;
+  deletingName.value = null;
+  toast("已切换到默认样式", "success");
 }
 
-/** 应用某个配置（覆盖当前四块样式，自动持久化） */
+/** 切换到某个自定义配置（丢弃当前未保存修改） */
 function applySnapshot(snap: StyleSnapshot): void {
-  for (const key of BLOCK_KEYS) {
-    const st = snap.styles?.[key]
-    if (st && typeof st === 'object') state[key] = { ...st }
+  naming.value = false;
+  customActive.value = snap.name;
+  restoreState(snap.styles);
+  pickerOpen.value = false;
+  deletingName.value = null;
+  toast(`已切换到「${snap.name}」`, "success");
+}
+
+function requestDeleteStyle(name: string): void {
+  deletingName.value = deletingName.value === name ? null : name;
+}
+
+/** 删除配置；若删除的是当前激活项则回到默认样式 */
+function confirmDeleteStyle(snap: StyleSnapshot): void {
+  removeSnapshot(snap.name);
+  if (customActive.value === snap.name) {
+    customActive.value = null;
+    naming.value = false;
+    restoreState(defaults);
   }
-  snapMode.value = 'none'
-  toast(`已加载配置「${snap.name}」`, 'success')
+  deletingName.value = null;
+  toast(`已删除配置「${snap.name}」`, "success");
+}
+
+/** 点下拉底部「新增样式」：立即以默认值进入新样式，并就地命名 */
+function createNewStyle(): void {
+  pickerOpen.value = false;
+  deletingName.value = null;
+  restoreState(defaults);
+  naming.value = true;
+  customActive.value = null;
+  nameDraft.value = "";
+  toast("为新样式输入名称并回车，取消请按 Esc", "info");
+  nextTick(() => nameInputEl.value?.focus());
+}
+
+/** 命名未完成前取消新建（丢弃） */
+function cancelNaming(): void {
+  if (!naming.value) return;
+  naming.value = false;
+  nameDraft.value = "";
+  customActive.value = null;
+  restoreState(defaults);
+}
+
+/** 在名称输入框回车：保存命名并激活该样式 */
+function commitNaming(): void {
+  const name = nameDraft.value.trim();
+  if (!name) {
+    toast("请输入样式名称", "info");
+    nextTick(() => nameInputEl.value?.focus());
+    return;
+  }
+  const overwrite = upsertSnap(name);
+  naming.value = false;
+  customActive.value = name;
+  toast(overwrite ? `已更新「${name}」` : `已新建样式「${name}」`, "success");
+}
+
+/** 头部「保存」：把当前样式存为最近一次保存 */
+function saveCurrent(): void {
+  const name = customActive.value;
+  if (!name || naming.value) return;
+  upsertSnap(name);
+  toast(`已保存「${name}」`, "success");
+}
+
+/** 头部「重置」：回到该样式上次保存的状态 */
+function resetCurrent(): void {
+  const name = customActive.value;
+  if (!name || naming.value) return;
+  const snap = snapList.value.find((s) => s.name === name);
+  if (!snap) return;
+  restoreState(snap.styles);
+  toast(`已回到「${name}」上次保存的状态`, "success");
 }
 
 /** 删除某个配置 */
 function removeSnapshot(name: string): void {
-  snapList.value = snapList.value.filter((s) => s.name !== name)
-  persistSnapshots(snapList.value)
+  snapList.value = snapList.value.filter((s) => s.name !== name);
+  persistSnapshots(snapList.value);
 }
 
 function fmtTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleString('zh-CN', {
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
+    return new Date(iso).toLocaleString("zh-CN", {
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
       hour12: false,
-    })
+    });
   } catch {
-    return ''
+    return "";
   }
 }
 
 function toggle(): void {
-  open.value = !open.value
+  open.value = !open.value;
 }
 
 function onDocPointerdown(e: PointerEvent): void {
-  if (!open.value) return
-  const root = rootEl.value
-  if (root && !root.contains(e.target as Node)) open.value = false
+  const root = rootEl.value;
+  const target = e.target as Node;
+  if (root && !root.contains(target)) {
+    // 点击样式设置之外：命名中的新建视为失败，并收起整个面板
+    if (naming.value) cancelNaming();
+    open.value = false;
+    pickerOpen.value = false;
+    return;
+  }
+  const elTarget = e.target as Element;
+  // 命名保存之前点击其它任何地方 = 新建失败
+  if (naming.value && !elTarget.closest(".ss__name-input")) {
+    cancelNaming();
+    return;
+  }
+  // 面板内点到了样式选择下拉之外：收起下拉
+  if (pickerOpen.value && !elTarget.closest(".ss__picker")) {
+    pickerOpen.value = false;
+  }
 }
 
 function onKeydown(e: KeyboardEvent): void {
-  if (e.key !== 'Escape') return
-  // 先退出命名/加载子面板，再关闭整个面板
-  if (snapMode.value !== 'none') snapMode.value = 'none'
-  else open.value = false
+  if (e.key !== "Escape") return;
+  // 依次收起：命名新建 → 样式下拉 → 整个面板
+  if (naming.value) cancelNaming();
+  else if (pickerOpen.value) pickerOpen.value = false;
+  else open.value = false;
+}
+
+/* 刷新/重新打开后：默认激活第一个已保存的自定义样式（若有），否则为系统默认 */
+const storedInit = readSnapshots();
+snapList.value = storedInit;
+if (storedInit.length > 0) {
+  restoreState(storedInit[0].styles);
+  customActive.value = storedInit[0].name;
 }
 
 onMounted(() => {
-  document.addEventListener('pointerdown', onDocPointerdown)
-  window.addEventListener('keydown', onKeydown)
-})
+  document.addEventListener("pointerdown", onDocPointerdown);
+  window.addEventListener("keydown", onKeydown);
+});
 onBeforeUnmount(() => {
-  document.removeEventListener('pointerdown', onDocPointerdown)
-  window.removeEventListener('keydown', onKeydown)
-})
+  document.removeEventListener("pointerdown", onDocPointerdown);
+  window.removeEventListener("keydown", onKeydown);
+});
 </script>
 
 <template>
@@ -228,18 +412,134 @@ onBeforeUnmount(() => {
     >
       <svg viewBox="0 0 24 24" class="ss__btn-ic" aria-hidden="true">
         <text
-          x="12" y="13.2" text-anchor="middle" dominant-baseline="central"
-          font-size="15" font-weight="600" fill="currentColor" stroke="none"
-        >Aa</text>
+          x="12"
+          y="13.2"
+          text-anchor="middle"
+          dominant-baseline="central"
+          font-size="15"
+          font-weight="600"
+          fill="currentColor"
+          stroke="none"
+        >
+          Aa
+        </text>
       </svg>
     </button>
 
     <transition name="pop">
-      <div v-if="open" class="ss__panel" role="dialog" aria-label="正文与标题样式">
-        <!-- 头部 -->
+      <div
+        v-if="open"
+        class="ss__panel"
+        role="dialog"
+        aria-label="正文与标题样式"
+      >
+        <!-- 头部：样式选择 + 重置（替代原标题，关闭按钮保留在右） -->
         <header class="ss__head">
-          <div class="ss__head-title">
-            自定义正文与标题样式
+          <div class="ss__head-tools">
+            <div class="ss__picker">
+              <button
+                v-if="!naming"
+                class="ss__trigger"
+                :class="{ open: pickerOpen }"
+                title="选择 / 管理样式配置"
+                @click.stop="togglePicker"
+              >
+                <span class="ss__trigger-label">{{ customActive ?? "默认样式" }}</span>
+              </button>
+              <input
+                v-else
+                ref="nameInputEl"
+                v-model="nameDraft"
+                class="ss__name-input"
+                type="text"
+                maxlength="24"
+                placeholder="样式名称，回车保存"
+                spellcheck="false"
+                autocomplete="off"
+                @keydown.enter.prevent="commitNaming"
+                @keydown.esc.prevent="cancelNaming"
+              />
+
+              <transition name="ssdrop">
+                <div v-if="pickerOpen" class="ss__picker-panel" @click.stop>
+                  <div
+                    class="ss__popt"
+                    :class="{ active: !customActive }"
+                    @click="applyDefaultStyle"
+                  >
+                    <span class="ss__popt-name">默认样式</span>
+                  </div>
+
+                  <template v-if="snapList.length > 0">
+                    <div
+                      v-for="s in snapList"
+                      :key="s.savedAt + s.name"
+                      class="ss__popt"
+                      :class="{ active: customActive === s.name }"
+                    >
+                      <span
+                        class="ss__popt-main"
+                        :title="`加载「${s.name}」`"
+                        @click="applySnapshot(s)"
+                      >
+                        <span class="ss__popt-name">{{ s.name }}</span>
+                        <span class="ss__popt-time">{{
+                          fmtTime(s.savedAt)
+                        }}</span>
+                      </span>
+
+                      <span
+                        v-if="deletingName === s.name"
+                        class="ss__popt-ops"
+                      >
+                        <button
+                          class="ss__mini danger"
+                          @click="confirmDeleteStyle(s)"
+                        >
+                          删除
+                        </button>
+                        <button class="ss__mini" @click="deletingName = null">
+                          取消
+                        </button>
+                      </span>
+                      <button
+                        v-else
+                        class="ss__mini ss__popt-del"
+                        :title="`删除配置「${s.name}」`"
+                        @click.stop="requestDeleteStyle(s.name)"
+                      >
+                        删除
+                      </button>
+                    </div>
+                  </template>
+                  <div
+                    class="ss__popt ss__popt-new"
+                    title="把当前四种块的样式存为一份新的命名配置"
+                    @click="createNewStyle"
+                  >
+                    <span class="ss__popt-name">新增样式</span>
+                  </div>
+                </div>
+              </transition>
+            </div>
+
+            <template v-if="customActive && !naming">
+              <button
+                class="ss__save"
+                :disabled="!dirty"
+                title="保存当前样式（之后可随时重置回此状态）"
+                @click="saveCurrent"
+              >
+                保存
+              </button>
+              <button
+                class="ss__reset"
+                title="放弃未保存的修改，回到上次保存的状态"
+                @click="resetCurrent"
+              >
+                重置
+              </button>
+            </template>
           </div>
           <button class="ss__close" title="关闭（Esc）" @click="open = false">
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -258,11 +558,24 @@ onBeforeUnmount(() => {
             role="tab"
             :aria-selected="key === activeKey"
             @click="activeKey = key"
-          >{{ tabLabel(key) }}</button>
+          >
+            {{ tabLabel(key) }}
+          </button>
         </nav>
 
         <!-- 当前块配置 -->
-        <div v-if="activeKey" class="ss__body">
+        <p v-if="lockedDefault || naming" class="ss__lock-hint">
+          {{
+            naming
+              ? "输入样式名称并回车后即可开始编辑；回车前点击其它位置将放弃新建"
+              : "默认样式仅供查看，新建或选择自定义样式后即可编辑"
+          }}
+        </p>
+        <fieldset
+          v-if="activeKey"
+          class="ss__body"
+          :disabled="lockedDefault || naming"
+        >
           <!-- 字号 -->
           <div class="f-row">
             <span class="f-label">字号</span>
@@ -280,10 +593,12 @@ onBeforeUnmount(() => {
             <span class="f-val">{{ state[activeKey].fontSize }}px</span>
             <button
               class="f-reset"
-              :class="{ off: isDefault(activeKey, 'fontSize') }"
+              :class="{ off: isSavedEqual(activeKey, 'fontSize') }"
               title="恢复字号默认"
-              @click="resetField(activeKey, 'fontSize')"
-            >↺</button>
+              @click="resetFieldToSaved(activeKey, 'fontSize')"
+            >
+              ↺
+            </button>
           </div>
 
           <!-- 字重 -->
@@ -303,10 +618,12 @@ onBeforeUnmount(() => {
             <span class="f-val">{{ state[activeKey].fontWeight }}</span>
             <button
               class="f-reset"
-              :class="{ off: isDefault(activeKey, 'fontWeight') }"
+              :class="{ off: isSavedEqual(activeKey, 'fontWeight') }"
               title="恢复字重默认"
-              @click="resetField(activeKey, 'fontWeight')"
-            >↺</button>
+              @click="resetFieldToSaved(activeKey, 'fontWeight')"
+            >
+              ↺
+            </button>
           </div>
 
           <!-- 行高 -->
@@ -323,13 +640,17 @@ onBeforeUnmount(() => {
               @pointerdown="blurRangeOnDown"
               @mouseup="blurRange"
             />
-            <span class="f-val">{{ state[activeKey].lineHeight.toFixed(2) }}</span>
+            <span class="f-val">{{
+              state[activeKey].lineHeight.toFixed(2)
+            }}</span>
             <button
               class="f-reset"
-              :class="{ off: isDefault(activeKey, 'lineHeight') }"
+              :class="{ off: isSavedEqual(activeKey, 'lineHeight') }"
               title="恢复行高默认"
-              @click="resetField(activeKey, 'lineHeight')"
-            >↺</button>
+              @click="resetFieldToSaved(activeKey, 'lineHeight')"
+            >
+              ↺
+            </button>
           </div>
 
           <!-- 颜色（保留 label，色条占满 label 右侧整行） -->
@@ -344,39 +665,45 @@ onBeforeUnmount(() => {
             <span class="f-val f-val--mono">{{ state[activeKey].color }}</span>
             <button
               class="f-reset"
-              :class="{ off: isDefault(activeKey, 'color') }"
+              :class="{ off: isSavedEqual(activeKey, 'color') }"
               title="恢复颜色默认"
-              @click="resetField(activeKey, 'color')"
-            >↺</button>
+              @click="resetFieldToSaved(activeKey, 'color')"
+            >
+              ↺
+            </button>
           </div>
 
-          <!-- 形态：斜体 / 下划线 / 删除线 -->
+          <!-- 形态：斜体 / 下划线 / 删除线（可多选） -->
           <div class="f-row">
             <span class="f-label">形态</span>
-            <div class="f-switches">
-              <label class="sw">
-                <input v-model="state[activeKey].italic" type="checkbox" />
-                <i class="sw__track"></i>
-                <span>斜体</span>
-              </label>
-              <label class="sw">
-                <input v-model="state[activeKey].underline" type="checkbox" />
-                <i class="sw__track"></i>
-                <span>下划线</span>
-              </label>
-              <label class="sw">
-                <input v-model="state[activeKey].strike" type="checkbox" />
-                <i class="sw__track"></i>
-                <span>删除线</span>
-              </label>
+            <div
+              class="seg seg--3"
+              role="group"
+              aria-label="文字形态（可多选）"
+            >
+              <button
+                v-for="shape in SHAPE_OPTS"
+                :key="shape.key"
+                type="button"
+                class="seg__btn"
+                :class="{ active: state[activeKey][shape.key] }"
+                :title="shape.label"
+                @click="toggleShape(shape.key)"
+              >
+                <span class="seg-glyph" :class="shape.glyphClass">{{
+                  shape.glyph
+                }}</span>
+              </button>
             </div>
             <span class="f-val f-val--empty"></span>
             <button
               class="f-reset"
-              :class="{ off: isShapesDefault(activeKey) }"
+              :class="{ off: isShapesSavedEqual(activeKey) }"
               title="关闭斜体/下划线/删除线"
-              @click="resetShapes(activeKey)"
-            >↺</button>
+              @click="resetShapesToSaved(activeKey)"
+            >
+              ↺
+            </button>
           </div>
 
           <!-- 字间距 -->
@@ -389,35 +716,52 @@ onBeforeUnmount(() => {
               min="-0.05"
               max="0.2"
               step="0.005"
-              :style="{ '--pct': pct(-0.05, 0.2, state[activeKey].letterSpacing) }"
+              :style="{
+                '--pct': pct(-0.05, 0.2, state[activeKey].letterSpacing),
+              }"
               @pointerdown="blurRangeOnDown"
               @mouseup="blurRange"
             />
-            <span class="f-val">{{ fmt(state[activeKey].letterSpacing) }}em</span>
+            <span class="f-val"
+              >{{ fmt(state[activeKey].letterSpacing) }}em</span
+            >
             <button
               class="f-reset"
-              :class="{ off: isDefault(activeKey, 'letterSpacing') }"
+              :class="{ off: isSavedEqual(activeKey, 'letterSpacing') }"
               title="恢复字间距默认"
-              @click="resetField(activeKey, 'letterSpacing')"
-            >↺</button>
+              @click="resetFieldToSaved(activeKey, 'letterSpacing')"
+            >
+              ↺
+            </button>
           </div>
 
           <!-- 对齐 -->
           <div class="f-row">
             <span class="f-label">对齐</span>
-            <select v-model="state[activeKey].align" class="f-select">
-              <option value="left">左对齐</option>
-              <option value="center">居中</option>
-              <option value="right">右对齐</option>
-              <option value="justify">两端对齐</option>
-            </select>
+            <div class="seg" role="radiogroup" aria-label="对齐方式">
+              <button
+                v-for="opt in ALIGN_OPTS"
+                :key="opt.value"
+                type="button"
+                class="seg__btn"
+                :class="{ active: state[activeKey].align === opt.value }"
+                :title="opt.label"
+                @click="state[activeKey].align = opt.value"
+              >
+                <svg class="seg__ic" viewBox="0 0 20 20" aria-hidden="true">
+                  <path v-for="d in opt.d" :key="d" :d="d" />
+                </svg>
+              </button>
+            </div>
             <span class="f-val f-val--empty"></span>
             <button
               class="f-reset"
-              :class="{ off: isDefault(activeKey, 'align') }"
+              :class="{ off: isSavedEqual(activeKey, 'align') }"
               title="恢复对齐默认"
-              @click="resetField(activeKey, 'align')"
-            >↺</button>
+              @click="resetFieldToSaved(activeKey, 'align')"
+            >
+              ↺
+            </button>
           </div>
 
           <!-- 仅正文：首行缩进 / 段间距 -->
@@ -435,13 +779,17 @@ onBeforeUnmount(() => {
                 @pointerdown="blurRangeOnDown"
                 @mouseup="blurRange"
               />
-              <span class="f-val">{{ fmt(state[activeKey].textIndent) }}em</span>
+              <span class="f-val"
+                >{{ fmt(state[activeKey].textIndent) }}em</span
+              >
               <button
                 class="f-reset"
-                :class="{ off: isDefault(activeKey, 'textIndent') }"
+                :class="{ off: isSavedEqual(activeKey, 'textIndent') }"
                 title="恢复首行缩进默认"
-                @click="resetField(activeKey, 'textIndent')"
-              >↺</button>
+                @click="resetFieldToSaved(activeKey, 'textIndent')"
+              >
+                ↺
+              </button>
             </div>
             <div class="f-row">
               <span class="f-label">段间距</span>
@@ -459,86 +807,15 @@ onBeforeUnmount(() => {
               <span class="f-val">{{ state[activeKey].marginBottom }}px</span>
               <button
                 class="f-reset"
-                :class="{ off: isDefault(activeKey, 'marginBottom') }"
+                :class="{ off: isSavedEqual(activeKey, 'marginBottom') }"
                 title="恢复段间距默认"
-                @click="resetField(activeKey, 'marginBottom')"
-              >↺</button>
-            </div>
-          </template>
-        </div>
-
-        <!-- 命名保存 / 配置列表（子面板） -->
-        <div v-if="snapMode !== 'none'" class="ss__snap">
-          <template v-if="snapMode === 'save'">
-            <div class="ss__snap-head">
-              <span class="ss__snap-title">保存为配置</span>
-            </div>
-            <div class="ss__snap-row">
-              <input
-                v-model="saveDraft"
-                class="ss__snap-input"
-                type="text"
-                maxlength="24"
-                placeholder="配置名称"
-                spellcheck="false"
-                @keydown.enter="commitSave"
-              />
-              <button
-                class="ss__go"
-                :disabled="!saveDraft.trim()"
-                @click="commitSave"
-              >保存</button>
-              <button class="ss__go ss__go--ghost" @click="closeSnap">取消</button>
-            </div>
-            <p v-if="hasDupName()" class="ss__snap-warn">
-              已有同名配置，保存将覆盖它
-            </p>
-          </template>
-
-          <template v-else-if="snapMode === 'load'">
-            <div class="ss__snap-head">
-              <span class="ss__snap-title">选择要加载的配置</span>
-              <button class="ss__go ss__go--ghost" @click="closeSnap">取消</button>
-            </div>
-            <ul v-if="snapList.length > 0" class="ss__snap-list">
-              <li
-                v-for="s in snapList"
-                :key="s.savedAt + s.name"
-                class="ss__snap-item"
+                @click="resetFieldToSaved(activeKey, 'marginBottom')"
               >
-                <button
-                  class="ss__snap-pick"
-                  title="应用该配置"
-                  @click="applySnapshot(s)"
-                >
-                  <span class="ss__snap-name">{{ s.name }}</span>
-                  <span class="ss__snap-time">{{ fmtTime(s.savedAt) }}</span>
-                </button>
-                <button
-                  class="ss__snap-del"
-                  title="删除该配置"
-                  @click.stop="removeSnapshot(s.name)"
-                >
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M6 6l12 12M18 6L6 18" />
-                  </svg>
-                </button>
-              </li>
-            </ul>
-            <p v-else class="ss__snap-empty">
-              还没有保存过的配置<br />点「保存样式」创建一个
-            </p>
+                ↺
+              </button>
+            </div>
           </template>
-        </div>
-
-        <!-- 底部操作 -->
-        <footer class="ss__foot">
-          <button class="ss__action" title="把当前四种块的样式存为一份命名配置" @click="openSave">保存样式</button>
-          <button class="ss__action" title="选择并加载一份保存过的配置" @click="openLoad">加载样式</button>
-          <span class="ss__spacer"></span>
-          <button class="ss__reset" @click="resetBlock(activeKey)">重置此项</button>
-          <button class="ss__reset ss__reset--danger" @click="resetAll">全部默认</button>
-        </footer>
+        </fieldset>
       </div>
     </transition>
   </div>
@@ -563,9 +840,12 @@ onBeforeUnmount(() => {
   color: var(--text-mid);
   cursor: pointer;
   box-shadow: var(--neu-raise-sm);
-  transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
 }
-.ss__btn:hover {
+.ss__btn:hover:not(:active):not(.active) {
   background: rgba(255, 255, 255, 0.35);
   color: var(--text-strong);
 }
@@ -579,7 +859,7 @@ onBeforeUnmount(() => {
   height: 18px;
 }
 .ss__btn-ic text {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
 }
 
 /* ============ 面板 ============ */
@@ -605,18 +885,12 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   padding: 13px 14px 11px;
 }
-.ss__head-title {
+.ss__head-tools {
   display: flex;
-  flex-direction: column;
-  gap: 1px;
-  font-size: 14px;
-  font-weight: 650;
-  color: var(--text-strong);
-}
-.ss__head-sub {
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--text-faint);
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
 }
 .ss__close {
   display: inline-flex;
@@ -629,9 +903,11 @@ onBeforeUnmount(() => {
   background: transparent;
   color: var(--text-faint);
   cursor: pointer;
-  transition: background-color 0.14s ease, color 0.14s ease;
+  transition:
+    background-color 0.14s ease,
+    color 0.14s ease;
 }
-.ss__close:hover {
+.ss__close:hover:not(:active) {
   background: rgba(255, 255, 255, 0.35);
   color: var(--text-strong);
 }
@@ -644,41 +920,40 @@ onBeforeUnmount(() => {
   stroke-linecap: round;
 }
 
-/* ---------- 块页签 ---------- */
+/* ---------- 块页签（无背景容器，按钮各自为新拟态胶囊） ---------- */
 .ss__tabs {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 2px;
-  padding: 0 12px;
-  background: var(--bg-sidebar);
-  box-shadow: inset 0 1px 3px rgba(24, 26, 30, 0.08);
+  gap: 6px;
+  padding: 4px 14px 12px;
+  background: transparent;
 }
 .ss__tab {
   height: 30px;
   border: none;
-  background: transparent;
+  border-radius: 9px;
+  background: var(--bg-canvas);
   color: var(--text-mid);
   font-size: 12.5px;
   cursor: pointer;
-  position: relative;
-  transition: color 0.14s ease;
+  box-shadow: var(--neu-raise-sm);
+  transition:
+    background-color 0.14s ease,
+    color 0.14s ease,
+    box-shadow 0.14s ease;
 }
-.ss__tab:hover {
+.ss__tab:hover:not(:active):not(.active) {
+  background: rgba(255, 255, 255, 0.35);
   color: var(--text-strong);
 }
+.ss__tab:active {
+  box-shadow: var(--neu-sink-sm);
+}
 .ss__tab.active {
+  background: transparent;
   color: var(--accent);
   font-weight: 600;
-}
-.ss__tab.active::after {
-  content: '';
-  position: absolute;
-  left: 14%;
-  right: 14%;
-  bottom: 0;
-  height: 2px;
-  border-radius: 2px 2px 0 0;
-  background: var(--accent);
+  box-shadow: var(--neu-sink-sm);
 }
 
 /* ---------- 配置区 ---------- */
@@ -733,9 +1008,11 @@ onBeforeUnmount(() => {
   font-size: 13px;
   line-height: 1;
   cursor: pointer;
-  transition: background-color 0.14s ease, color 0.14s ease;
+  transition:
+    background-color 0.14s ease,
+    color 0.14s ease;
 }
-.f-reset:hover {
+.f-reset:hover:not(:active) {
   background: var(--bg-hover);
   color: var(--accent);
 }
@@ -744,10 +1021,11 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
-/* ---------- 滑块（自绘轨道 + 圆钮） ---------- */
+/* ---------- 滑块（灰圆底轨 + 独立圆头蓝色进度层；Firefox 用原生 progress） ---------- */
 .range {
   -webkit-appearance: none;
   appearance: none;
+  position: relative;
   width: 100%;
   height: 16px;
   margin: 0;
@@ -758,49 +1036,49 @@ onBeforeUnmount(() => {
 .range:focus {
   outline: none;
 }
+.range::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: var(--pct, 0%);
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  pointer-events: none;
+}
 .range::-webkit-slider-runnable-track {
   height: 6px;
-  border-radius: 4px;
-  background: linear-gradient(
-    90deg,
-    var(--accent) 0 var(--pct),
-    rgba(24, 26, 30, 0.14) var(--pct) 100%
-  );
+  border-radius: 999px;
+  background: rgba(24, 26, 30, 0.14);
   box-shadow: inset 0 1px 2px rgba(24, 26, 30, 0.16);
 }
 .range::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  margin-top: -4.5px;
-  width: 15px;
-  height: 15px;
-  border-radius: 50%;
-  background: #fff;
+  width: 0;
+  height: 0;
   border: none;
-  box-shadow: var(--neu-raise-sm);
-  transition: transform 0.12s ease, box-shadow 0.12s ease;
-}
-.range::-webkit-slider-thumb:hover {
-  transform: scale(1.15);
-  box-shadow: var(--neu-raise);
+  background: transparent;
+  box-shadow: none;
 }
 .range::-moz-range-track {
   height: 6px;
-  border-radius: 4px;
+  border-radius: 999px;
   background: rgba(24, 26, 30, 0.14);
 }
 .range::-moz-range-progress {
   height: 6px;
-  border-radius: 4px;
+  border-radius: 999px;
   background: var(--accent);
 }
 .range::-moz-range-thumb {
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  background: #fff;
+  width: 0;
+  height: 0;
   border: none;
-  box-shadow: 0 2px 4px rgba(24, 26, 30, 0.3);
+  background: transparent;
+  box-shadow: none;
 }
 
 /* ---------- 取色（色块铺满 label 与 hex 之间整段） ---------- */
@@ -817,7 +1095,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
   transition: border-color 0.14s ease;
 }
-.c-swatch:hover {
+.c-swatch:hover:not(:active) {
   border-color: var(--accent);
 }
 .c-swatch::-webkit-color-swatch-wrapper {
@@ -832,72 +1110,69 @@ onBeforeUnmount(() => {
   border-radius: 7px;
 }
 
-/* ---------- 开关 ---------- */
-.f-switches {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 12px;
+/* ---------- 分段按钮扩展（多列 / 字形） ---------- */
+.seg--3 {
+  grid-template-columns: repeat(3, 1fr);
 }
-.sw {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11.5px;
-  color: var(--text-mid);
-  cursor: pointer;
+.seg-glyph {
+  font-size: 15px;
+  line-height: 1;
   user-select: none;
 }
-.sw input {
-  display: none;
+.seg-glyph--italic {
+  font-style: italic;
+  font-family: Georgia, "Times New Roman", serif;
 }
-.sw__track {
-  position: relative;
-  width: 28px;
-  height: 17px;
-  border-radius: 9px;
-  background: rgba(24, 26, 30, 0.16);
-  box-shadow: inset 0 1px 2px rgba(24, 26, 30, 0.22);
-  transition: background-color 0.16s ease, box-shadow 0.16s ease;
+.seg-glyph--under {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
-.sw__track::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(24, 26, 30, 0.3);
-  transition: transform 0.16s ease;
-}
-.sw input:checked + .sw__track {
-  background: var(--accent);
-  box-shadow: none;
-}
-.sw input:checked + .sw__track::after {
-  transform: translateX(11px);
+.seg-glyph--strike {
+  text-decoration: line-through;
 }
 
-/* ---------- 下拉 ---------- */
-.f-select {
+/* ---------- 对齐分段按钮 ---------- */
+.seg {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
   width: 100%;
+}
+.seg__btn {
   height: 28px;
-  padding: 0 8px;
   border: none;
   border-radius: 8px;
-  background: var(--bg-sidebar);
-  box-shadow: var(--neu-sink-sm);
+  background: var(--bg-canvas);
   color: var(--text-mid);
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  outline: none;
-  transition: background-color 0.14s ease, color 0.14s ease, box-shadow 0.14s ease;
-}
-.f-select:hover {
-  background: rgba(255, 255, 255, 0.3);
   box-shadow: var(--neu-raise-sm);
+  transition:
+    background-color 0.14s ease,
+    color 0.14s ease,
+    box-shadow 0.14s ease;
+}
+.seg__btn:hover:not(:active):not(.active) {
+  background: rgba(255, 255, 255, 0.35);
   color: var(--text-strong);
+}
+.seg__btn:active {
+  box-shadow: var(--neu-sink-sm);
+}
+.seg__btn.active {
+  background: transparent;
+  color: var(--accent);
+  box-shadow: var(--neu-sink-sm);
+}
+.seg__ic {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
 }
 
 /* ---------- 命名快照子面板 ---------- */
@@ -936,11 +1211,15 @@ onBeforeUnmount(() => {
   color: var(--text-strong);
   font-size: 12px;
   outline: none;
-  transition: background-color 0.14s ease, box-shadow 0.14s ease;
+  transition:
+    background-color 0.14s ease,
+    box-shadow 0.14s ease;
 }
 .ss__snap-input:focus {
   background: rgba(255, 255, 255, 0.4);
-  box-shadow: var(--neu-sink), 0 0 0 2px var(--accent-soft);
+  box-shadow:
+    var(--neu-sink),
+    0 0 0 2px var(--accent-soft);
 }
 .ss__go {
   height: 28px;
@@ -952,10 +1231,15 @@ onBeforeUnmount(() => {
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
-  box-shadow: 3px 3px 8px rgba(37, 99, 235, 0.32), -2px -2px 5px rgba(255, 255, 255, 0.65);
-  transition: background-color 0.14s ease, opacity 0.14s ease, box-shadow 0.14s ease;
+  box-shadow:
+    3px 3px 8px rgba(37, 99, 235, 0.32),
+    -2px -2px 5px rgba(255, 255, 255, 0.65);
+  transition:
+    background-color 0.14s ease,
+    opacity 0.14s ease,
+    box-shadow 0.14s ease;
 }
-.ss__go:hover {
+.ss__go:hover:not(:active):not(:disabled) {
   background: var(--accent-hover);
 }
 .ss__go:disabled {
@@ -968,7 +1252,7 @@ onBeforeUnmount(() => {
   border: none;
   box-shadow: var(--neu-raise-sm);
 }
-.ss__go--ghost:hover {
+.ss__go--ghost:hover:not(:active) {
   background: rgba(255, 255, 255, 0.35);
   color: var(--text-strong);
   box-shadow: var(--neu-raise);
@@ -978,126 +1262,181 @@ onBeforeUnmount(() => {
   font-size: 11px;
   color: var(--danger);
 }
-.ss__snap-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  max-height: 160px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+
+/* ---------- 样式选择下拉（视觉对齐笔记切换 picker） ---------- */
+.ss__picker {
+  position: relative;
+  flex: 0 1 auto;
+  min-width: 120px;
+  max-width: 320px;
 }
-.ss__snap-item {
+.ss__trigger {
   display: flex;
   align-items: center;
-  gap: 4px;
-  border-radius: 8px;
+  gap: 8px;
+  width: 100%;
+  height: 28px;
+  padding: 0 6px 0 12px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--bg-canvas);
+  color: var(--text-strong);
+  font-size: 13.5px;
+  cursor: pointer;
+  box-shadow: var(--neu-raise-sm);
+  transition:
+    background-color 0.14s ease,
+    color 0.14s ease,
+    box-shadow 0.14s ease;
+}
+.ss__trigger:hover:not(:active):not(.open) {
+  background: rgba(255, 255, 255, 0.3);
+}
+.ss__trigger.open {
+  box-shadow: var(--neu-sink-sm);
+  color: var(--accent);
+}
+.ss__trigger-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.ss__picker-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  z-index: 62;
+  width: 300px;
+  max-width: calc(100vw - 32px);
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--bg-canvas);
+  box-shadow: var(--shadow-pop);
+  max-height: 42vh;
+  overflow-y: auto;
+}
+.ssdrop-enter-active,
+.ssdrop-leave-active {
+  transition:
+    opacity 0.14s ease,
+    transform 0.14s ease;
+}
+.ssdrop-enter-from,
+.ssdrop-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+.ss__popt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
   transition: background-color 0.12s ease;
 }
-.ss__snap-item:hover {
+.ss__popt + .ss__popt {
+  margin-top: 6px;
+}
+.ss__popt:hover:not(:active):not(.active) {
   background: var(--bg-hover);
 }
-.ss__snap-pick {
+.ss__popt.active {
+  background: var(--bg-active);
+}
+.ss__popt-main {
   flex: 1;
   min-width: 0;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 6px 4px 6px 8px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
+  flex-direction: column;
+  gap: 2px;
 }
-.ss__snap-name {
-  font-size: 12.5px;
+.ss__popt-name {
+  font-size: 13.5px;
+  font-weight: 550;
   color: var(--text-strong);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.ss__snap-time {
-  font-size: 10.5px;
+.ss__popt-time {
+  font-size: 11px;
   color: var(--text-faint);
-  flex: none;
   font-variant-numeric: tabular-nums;
 }
-.ss__snap-del {
+.ss__mini {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
   border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-faint);
+  border-radius: 7px;
+  font-size: 12px;
+  padding: 3px 9px;
   cursor: pointer;
-  transition: background-color 0.12s ease, color 0.12s ease;
+  background: var(--bg-canvas);
+  color: var(--text-mid);
+  box-shadow: var(--neu-raise-sm);
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
 }
-.ss__snap-del:hover {
+.ss__mini:hover:not(:active) {
+  background: rgba(255, 255, 255, 0.3);
+  color: var(--text-strong);
+}
+.ss__mini.danger {
   background: var(--danger-soft);
   color: var(--danger);
+  box-shadow: none;
 }
-.ss__snap-del svg {
-  width: 11px;
-  height: 11px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
+.ss__mini.danger:hover:not(:active) {
+  background: rgba(211, 61, 61, 0.16);
 }
-.ss__snap-empty {
-  margin: 0;
-  padding: 6px 0;
-  font-size: 12px;
-  line-height: 1.7;
-  text-align: center;
-  color: var(--text-faint);
+.ss__popt-del {
+  opacity: 0;
+}
+.ss__popt:hover:not(.active) .ss__popt-del,
+.ss__popt:focus-within .ss__popt-del {
+  opacity: 1;
+}
+.ss__popt-ops {
+  display: inline-flex;
+  gap: 4px;
+  flex: none;
+}
+.ss__popt-new {
+  color: var(--accent);
+  font-weight: 600;
 }
 
-/* ---------- 底部 ---------- */
-.ss__foot {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 8px 10px;
-  border-top: 1px solid var(--border);
-  background: var(--bg-soft);
-}
-.ss__spacer {
-  flex: 1;
-}
-.ss__action,
 .ss__reset {
   border: none;
-  background: transparent;
+  background: var(--bg-canvas);
+  color: var(--text-mid);
   font-size: 11.5px;
   cursor: pointer;
-  padding: 4px 7px;
-  border-radius: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
   white-space: nowrap;
-  transition: background-color 0.14s ease, color 0.14s ease;
-}
-.ss__action {
-  color: var(--accent);
-  font-weight: 550;
-}
-.ss__action:hover {
-  background: var(--accent-soft);
+  box-shadow: var(--neu-raise-sm);
+  transition:
+    background-color 0.14s ease,
+    color 0.14s ease,
+    box-shadow 0.14s ease;
 }
 .ss__reset {
   color: var(--text-mid);
 }
-.ss__reset:hover {
-  background: var(--bg-hover);
+.ss__reset:hover:not(:active) {
+  background: rgba(255, 255, 255, 0.3);
   color: var(--text-strong);
 }
-.ss__reset--danger:hover {
-  background: var(--danger-soft);
-  color: var(--danger);
+.ss__reset:active {
+  box-shadow: var(--neu-sink-sm);
 }
 
 /* ---------- 弹出动画 ---------- */
@@ -1112,5 +1451,91 @@ onBeforeUnmount(() => {
 .pop-leave-to {
   opacity: 0;
   transform: translateY(-6px) scale(0.98);
+}
+
+/* ---------- 内联命名输入（替换下拉触发按钮） ---------- */
+.ss__name-input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 28px;
+  padding: 0 6px 0 12px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--bg-canvas);
+  color: var(--text-strong);
+  font-size: 13.5px;
+  font-family: inherit;
+  outline: none;
+  box-shadow: var(--neu-sink-sm);
+}
+.ss__name-input::placeholder {
+  color: var(--text-faint);
+}
+
+/* ---------- 头部「保存」按钮（与重置同规格，强调色） ---------- */
+.ss__save {
+  border: none;
+  background: var(--bg-canvas);
+  color: var(--accent);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 8px;
+  white-space: nowrap;
+  box-shadow: var(--neu-raise-sm);
+  transition:
+    background-color 0.14s ease,
+    color 0.14s ease,
+    box-shadow 0.14s ease;
+}
+.ss__save:hover:not(:active):not(:disabled) {
+  background: rgba(255, 255, 255, 0.3);
+  color: var(--accent);
+}
+.ss__save:active:not(:disabled) {
+  box-shadow: var(--neu-sink-sm);
+}
+.ss__save:disabled {
+  color: var(--text-faint);
+  opacity: 0.55;
+  cursor: default;
+  box-shadow: none;
+}
+
+/* ---------- 配置区（fieldset）：只读锁定态 ---------- */
+.ss__body {
+  border: 0;
+  margin: 0;
+  min-inline-size: 0;
+}
+.ss__body:disabled {
+  opacity: 0.55;
+}
+.ss__lock-hint {
+  margin: 0;
+  padding: 2px 14px 10px;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* ---------- 按钮按压态 / 常态平滑切换（统一） ---------- */
+.ss__btn,
+.ss__close,
+.ss__tab,
+.f-reset,
+.seg__btn,
+.ss__go,
+.ss__go--ghost,
+.ss__trigger,
+.ss__mini,
+.ss__save,
+.ss__reset,
+.ss__popt {
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.22s ease,
+    opacity 0.2s ease;
 }
 </style>

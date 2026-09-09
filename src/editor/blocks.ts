@@ -244,17 +244,6 @@ function textBeforeCaretInBlock(block: HTMLElement, caret: Range): boolean {
   return anyBefore
 }
 
-function setCaretAfterNode(node: Node): void {
-  const range = document.createRange()
-  if (node.parentNode) {
-    range.setStartAfter(node)
-  } else {
-    range.selectNodeContents(node)
-  }
-  range.collapse(true)
-  applyRange(range)
-}
-
 function newParagraph(content?: DocumentFragment): HTMLElement {
   const p = document.createElement('p')
   if (content && content.hasChildNodes()) p.appendChild(content)
@@ -578,7 +567,10 @@ export function toggleInlineMark(editor: HTMLElement, mark: InlineMark): boolean
     if (parent) {
       const kids = Array.from(whole.childNodes)
       for (const k of kids) parent.insertBefore(k, whole)
+      const lastKid = kids[kids.length - 1] ?? null
       whole.remove()
+      // 解包后把光标放到展开内容的末尾，确保选区仍落在编辑器内的节点上
+      if (lastKid) placeCaretAtEndOf(lastKid)
     }
     return true
   }
@@ -593,7 +585,11 @@ export function toggleInlineMark(editor: HTMLElement, mark: InlineMark): boolean
   if (frag.hasChildNodes()) {
     range.insertNode(frag)
     const last = frag.lastChild ?? null
-    if (last) setCaretAfterNode(last)
+    if (last) {
+      // 光标放进最后一个包裹元素“内部”末尾（anchor 落回该元素内，
+      // 使 isMarkActive 立即判定为激活），而不是放到元素之后
+      placeCaretAtEndOf(last)
+    }
   }
   return true
 }
@@ -792,5 +788,6 @@ export function pasteTextInto(editor: HTMLElement, text: string): void {
     anchor = p
     lastLine = p
   }
-  if (lastLine) placeCaretAtStartOf(lastLine)
+  // 光标放到粘贴内容末尾（最后一行最后一个字符之后）
+  if (lastLine) placeCaretAtEndOf(lastLine)
 }

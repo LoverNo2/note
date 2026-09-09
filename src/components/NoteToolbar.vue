@@ -35,7 +35,12 @@ function iconOf(action: ToolbarAction): IconName {
 </script>
 
 <template>
-  <div class="fmtbar" role="toolbar" aria-label="文本格式">
+  <div
+    class="fmtbar"
+    role="toolbar"
+    aria-label="文本格式"
+    @mousedown.prevent
+  >
     <button
       class="btn"
       :class="{ active: isBlockActive('paragraph') }"
@@ -172,7 +177,7 @@ function iconOf(action: ToolbarAction): IconName {
   cursor: pointer;
   transition: background-color 0.14s ease, color 0.14s ease;
 }
-.btn:hover {
+.btn:hover:not(:active):not(.active) {
   background: rgba(255, 255, 255, 0.32);
   box-shadow: var(--neu-raise-sm);
   color: var(--text-strong);
@@ -195,5 +200,14 @@ function iconOf(action: ToolbarAction): IconName {
   margin: 0 5px;
   background: var(--border);
   flex: none;
+}
+
+/* 按钮按压态 / 常态平滑切换（统一） */
+.btn {
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.22s ease,
+    opacity 0.2s ease;
 }
 </style>

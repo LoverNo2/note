@@ -157,6 +157,11 @@ body,
   height: 100%;
 }
 
+/* 页面最小宽度：窄于该值时整体横向滚动，避免布局挤压 */
+#app {
+  min-width: 720px;
+}
+
 body {
   margin: 0;
   font-family: var(--font-sans);
@@ -239,7 +244,7 @@ textarea,
     background-color 0.16s ease,
     color 0.16s ease;
 }
-.icon-btn:hover {
+.icon-btn:hover:not(:active):not(:disabled) {
   background: rgba(255, 255, 255, 0.3);
   box-shadow: var(--neu-raise-sm);
   color: var(--text-strong);
@@ -248,7 +253,7 @@ textarea,
   box-shadow: var(--neu-sink-sm);
   background: transparent;
 }
-.icon-btn.danger:hover {
+.icon-btn.danger:hover:not(:active):not(:disabled) {
   background: var(--danger-soft);
   color: var(--danger);
 }
@@ -278,13 +283,12 @@ textarea,
     box-shadow 0.15s ease,
     transform 0.05s ease;
 }
-.btn-primary:hover {
+.btn-primary:hover:not(:active):not(:disabled) {
   background: rgba(255, 255, 255, 0.4);
   color: var(--text-strong);
   box-shadow: var(--neu-raise);
 }
 .btn-primary:active {
-  transform: translateY(1px);
   box-shadow: var(--neu-sink);
 }
 
@@ -306,7 +310,7 @@ textarea,
     color 0.15s ease,
     box-shadow 0.15s ease;
 }
-.btn-ghost:hover {
+.btn-ghost:hover:not(:active):not(:disabled) {
   background: rgba(255, 255, 255, 0.25);
   color: var(--text-strong);
 }
@@ -332,7 +336,7 @@ textarea,
     color 0.15s ease,
     box-shadow 0.15s ease;
 }
-.mini-btn:hover {
+.mini-btn:hover:not(:active):not(:disabled) {
   background: rgba(255, 255, 255, 0.3);
   color: var(--text-strong);
 }
@@ -344,48 +348,8 @@ textarea,
   color: var(--danger);
   box-shadow: none;
 }
-.mini-btn.danger:hover {
+.mini-btn.danger:hover:not(:active):not(:disabled) {
   background: rgba(211, 61, 61, 0.16);
-}
-
-/* Toast 容器与消息（在 App 级挂载） */
-.toast-list {
-  position: fixed;
-  right: 18px;
-  bottom: 18px;
-  z-index: 50;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-  pointer-events: none;
-}
-.toast {
-  max-width: 340px;
-  padding: 9px 14px;
-  border-radius: var(--radius-md);
-  background: rgba(40, 40, 40, 0.92);
-  color: #f5f5f2;
-  font-size: 13.5px;
-  line-height: 1.45;
-  box-shadow: var(--shadow-pop);
-  animation: toast-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2);
-}
-.toast--success {
-  background: rgba(14, 122, 87, 0.96);
-}
-.toast--error {
-  background: rgba(170, 45, 45, 0.95);
-}
-@keyframes toast-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px) scale(0.97);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
 }
 
 /* ============================================================
@@ -563,5 +527,19 @@ textarea,
 }
 .note-content ::selection {
   background: rgba(37, 99, 235, 0.16);
+}
+
+/* ============================================================
+   按钮按下态 / 常态平滑切换（统一）
+   ============================================================ */
+.btn-primary,
+.btn-ghost,
+.mini-btn,
+.icon-btn {
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.22s ease,
+    opacity 0.2s ease;
 }
 

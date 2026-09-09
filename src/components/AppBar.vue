@@ -14,12 +14,11 @@ const {
   selectNote,
   deleteNote,
 } = useNotes();
-const { toasts, toast } = useToast();
+const { toast } = useToast();
 
 /* ---------------- 下拉 ---------------- */
 const open = ref(false);
 const deletingId = ref<string | null>(null);
-const rootEl = ref<HTMLElement | null>(null);
 
 const currentLabel = computed(() => {
   const n = currentNote.value;
@@ -62,8 +61,12 @@ function onCreate(): void {
 
 function onDocPointerdown(e: PointerEvent): void {
   if (!open.value) return;
-  const root = rootEl.value;
-  if (root && !root.contains(e.target as Node)) open.value = false;
+  const target = e.target as Element | null;
+  // 只要点击不在笔记切换 picker（trigger / 面板）内，就收起下拉
+  // （含顶栏其它按钮、样式设置弹窗、页面其它位置）
+  if (!target || !target.closest(".picker")) {
+    open.value = false;
+  }
 }
 
 watch(open, (v) => {
@@ -78,7 +81,7 @@ onBeforeUnmount(() =>
 </script>
 
 <template>
-  <header ref="rootEl" class="appbar">
+  <header class="appbar">
     <!-- 新建 + 笔记切换 -->
     <div class="appbar__left">
       <!-- <span class="brand">笔记本</span> -->
@@ -94,6 +97,7 @@ onBeforeUnmount(() =>
       <div class="picker">
         <button
           class="picker__trigger"
+          :class="{ open }"
           :title="
             currentNote
               ? `切换笔记（共 ${sortedNotes.length} 条）`
@@ -150,15 +154,6 @@ onBeforeUnmount(() =>
     <!-- 右侧：正文与标题样式设置 -->
     <StyleSettings />
   </header>
-
-  <div class="toast-list">
-    <div
-      v-for="t in toasts"
-      :key="t.id"
-      class="toast"
-      :class="`toast--${t.type}`"
-    >{{ t.text }}</div>
-  </div>
 </template>
 
 <style scoped>
@@ -219,11 +214,15 @@ onBeforeUnmount(() =>
     background-color 0.14s ease,
     box-shadow 0.14s ease;
 }
-.picker__trigger:hover:not(:disabled) {
+.picker__trigger:hover:not(:disabled):not(:active):not(.open) {
   background: rgba(255, 255, 255, 0.3);
 }
-.picker__trigger:active:not(:disabled) {
+.picker__trigger:active:not(:disabled),
+.picker__trigger.open:not(:disabled) {
   box-shadow: var(--neu-sink-sm);
+}
+.picker__trigger.open:not(:disabled) {
+  color: var(--accent);
 }
 .picker__trigger:disabled {
   color: var(--text-faint);
@@ -273,7 +272,10 @@ onBeforeUnmount(() =>
   border-radius: var(--radius-sm);
   cursor: pointer;
 }
-.note:hover {
+.note + .note {
+  margin-top: 6px; /* 选项间隙 = 面板 padding */
+}
+.note:hover:not(.active) {
   background: var(--bg-hover);
 }
 .note.active {
@@ -300,7 +302,7 @@ onBeforeUnmount(() =>
 .note__del {
   opacity: 0;
 }
-.note:hover .note__del,
+.note:hover:not(.active) .note__del,
 .note:focus-within .note__del {
   opacity: 1;
 }
@@ -315,5 +317,15 @@ onBeforeUnmount(() =>
   text-align: center;
   font-size: 12.5px;
   color: var(--text-faint);
+}
+
+/* 按钮按压态 / 常态平滑切换（统一） */
+.picker__trigger,
+.note {
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.22s ease,
+    opacity 0.2s ease;
 }
 </style>

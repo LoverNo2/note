@@ -218,3 +218,102 @@ export function textFromHtml(html: string): string {
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 }
+
+/** 复制/粘贴时允许保留的标签（块 + 行内样式语义） */
+const PASTE_SAFE_TAGS = new Set([
+  "P",
+  "H1",
+  "H2",
+  "H3",
+  "H4",
+  "H5",
+  "H6",
+  "BLOCKQUOTE",
+  "UL",
+  "OL",
+  "LI",
+  "PRE",
+  "HR",
+  "DIV",
+  "BR",
+  "B",
+  "STRONG",
+  "I",
+  "EM",
+  "U",
+  "S",
+  "STRIKE",
+  "DEL",
+  "MARK",
+  "CODE",
+  "SPAN",
+  "SUB",
+  "SUP",
+  "A",
+])
+
+/** 必须整体丢弃的标签（可能携带脚本 / 表单 / 富媒体） */
+const PASTE_DROP_TAGS = new Set([
+  "SCRIPT",
+  "STYLE",
+  "IFRAME",
+  "FRAME",
+  "OBJECT",
+  "EMBED",
+  "APPLET",
+  "LINK",
+  "META",
+  "BASE",
+  "TITLE",
+  "TEMPLATE",
+  "NOSCRIPT",
+  "FORM",
+  "INPUT",
+  "BUTTON",
+  "SELECT",
+  "TEXTAREA",
+  "OPTION",
+  "VIDEO",
+  "AUDIO",
+  "CANVAS",
+  "MAP",
+  "AREA",
+  "SVG",
+  "MATH",
+])
+
+/**
+ * 剪贴板富文本清洗：只保留有语义的格式标签并去掉全部属性，
+ * 其余标签保留文本内容解包；危险标签整段移除。
+ * 复制时用（写入剪贴板），粘贴时先用（再交给 normalizeHtml）。
+ */
+export function sanitizeHtml(html: string): string {
+  const body = parseBody(html ?? "")
+  const clean = (el: Element): void => {
+    for (const child of Array.from(el.childNodes)) {
+      if (child.nodeType !== Node.ELEMENT_NODE) continue
+      const cEl = child as HTMLElement
+      const tag = cEl.tagName
+      if (PASTE_DROP_TAGS.has(tag)) {
+        cEl.remove()
+        continue
+      }
+      if (!PASTE_SAFE_TAGS.has(tag)) {
+        // 未知标签：保留其文本内容并解包
+        const parent = cEl.parentNode
+        if (parent) {
+          while (cEl.firstChild) parent.insertBefore(cEl.firstChild, cEl)
+          cEl.remove()
+        }
+        continue
+      }
+      // 白名单标签：去掉全部属性（含 class/style/href），只保留语义
+      for (const attr of Array.from(cEl.attributes)) {
+        cEl.removeAttribute(attr.name)
+      }
+      clean(cEl)
+    }
+  }
+  clean(body)
+  return body.innerHTML
+}
