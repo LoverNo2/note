@@ -16,6 +16,7 @@ import {
   caretTextIndex,
   codeExitOnArrowDown,
   currentBlockKind,
+  deleteFirstEmptyParagraph,
   editorHasContent,
   emptyToolbarUi,
   ensureStartParagraph,
@@ -366,6 +367,14 @@ function onKeydown(e: KeyboardEvent): void {
   // 代码块最后一行行尾按 ↓：在代码块下方另起新行并跳出代码块
   if (e.key === "ArrowDown") {
     if (codeExitOnArrowDown(el)) {
+      e.preventDefault();
+      afterDomChange();
+    }
+    return;
+  }
+
+  if (e.key === "Backspace") {
+    if (deleteFirstEmptyParagraph(el)) {
       e.preventDefault();
       afterDomChange();
     }

@@ -514,15 +514,37 @@ export function setBlockType(editor: HTMLElement, kind: BlockKind): void {
   }
 }
 
-/** 顶部笔记标题回车：若正文首块是代码块等不可直接当段落输入的块，
- *  先在其上方插入一个空段落，避免光标直接掉进代码块 */
-export function ensureStartParagraph(editor: HTMLElement): void {
+/** 顶部笔记标题回车：每次都在正文最顶部插入一个新的空段落并聚焦 */
+export function ensureStartParagraph(editor: HTMLElement): HTMLElement {
+  const p = newParagraph()
+  editor.insertBefore(p, editor.firstChild)
+  placeCaretAtStartOf(p)
+  return p
+}
+
+/** 删除正文最顶部的空行（光标须在该空行内）；删空最后一个块时不做处理 */
+export function deleteFirstEmptyParagraph(editor: HTMLElement): boolean {
   const first = editor.firstElementChild as HTMLElement | null
-  if (!first) return
-  if (first.tagName === 'PRE' || first.tagName === 'HR') {
-    const p = newParagraph()
-    editor.insertBefore(p, first)
+  if (!first || first.tagName !== 'P') return false
+  if (!isEmptyBlock(first)) return false
+  if (editor.children.length <= 1) return false // 唯一空行保留
+
+  const caret = getCaretRange(editor)
+  if (!caret || !editor.contains(caret.startContainer)) return false
+  if (
+    caret.startContainer !== first &&
+    !first.contains(caret.startContainer)
+  ) {
+    return false
   }
+
+  const next = first.nextElementSibling as HTMLElement | null
+  first.remove()
+  if (next) {
+    placeCaretAtStartOf(next)
+    return true
+  }
+  return false
 }
 
 /** 区域内最深的最后一个文本节点（用于判定“光标在末尾”） */
