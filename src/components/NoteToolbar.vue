@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { ToolbarUi } from '../editor/blocks'
 import Icon from './Icon.vue'
 import type { IconName } from './Icon.vue'
@@ -27,6 +28,25 @@ const emit = defineEmits<{ (e: 'exec', action: ToolbarAction): void }>()
 function isBlockActive(key: ToolbarAction): boolean {
   return props.ui.kind === key
 }
+
+/* ---------------- fmtbar 右侧的当前时间 ---------------- */
+const now = ref(new Date())
+let clockTimer: number | undefined
+const timeText = computed(() =>
+  now.value.toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }),
+)
+onMounted(() => {
+  clockTimer = window.setInterval(() => {
+    now.value = new Date()
+  }, 1000)
+})
+onBeforeUnmount(() => {
+  window.clearInterval(clockTimer)
+})
 
 /** 动作 → 图标名（同名映射，便于批量渲染） */
 function iconOf(action: ToolbarAction): IconName {
@@ -145,6 +165,9 @@ function iconOf(action: ToolbarAction): IconName {
       @mousedown.prevent
       @click="emit('exec', 'inlineCode')"
     ><Icon :name="iconOf('inlineCode')" /></button>
+
+    <!-- fmtbar 最右侧：当前时间 -->
+    <span class="fmtbar__time" aria-hidden="true">{{ timeText }}</span>
   </div>
 </template>
 
@@ -201,6 +224,20 @@ function iconOf(action: ToolbarAction): IconName {
   margin: 0 5px;
   background: var(--border);
   flex: none;
+}
+
+/* fmtbar 最右侧时间（格式条可横向滚动时也固定在右侧） */
+.fmtbar__time {
+  margin-left: auto;
+  padding-left: 10px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+  white-space: nowrap;
+  flex: none;
+  position: sticky;
+  right: 0;
+  background: var(--bg-canvas);
 }
 
 /* 按钮按压态 / 常态平滑切换（统一） */
