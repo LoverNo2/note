@@ -2,12 +2,12 @@
  * 自研块编辑器 DOM 引擎（contenteditable 之上的一层受控操作）。
  *
  * 约定：
- * - 正文内容顶层只允许块元素：p / h1-h3 / ul / ol / pre(code) / hr
+ * - 正文内容顶层只允许块元素：p / h1-h5 / ul / ol / pre(code) / hr
  * - 列表项 li 内直接容纳行内内容（不嵌 p）
  * - 引擎只做 DOM 变换并尽量保留光标所在的文本节点；撤销/重做由调用方维护快照
  */
 
-export type HeadingLevel = 'h1' | 'h2' | 'h3'
+export type HeadingLevel = 'h1' | 'h2' | 'h3' | 'h4' | 'h5'
 export type BlockKind =
   | 'paragraph'
   | HeadingLevel
@@ -24,7 +24,7 @@ const MARK_TAGS: Record<InlineMark, string[]> = {
   inlineCode: ['CODE'],
 }
 
-const HEADING_TAGS = ['H1', 'H2', 'H3']
+const HEADING_TAGS = ['H1', 'H2', 'H3', 'H4', 'H5']
 
 /* ---------------- 选区与定位 ---------------- */
 
@@ -82,7 +82,7 @@ export function currentBlockKind(editor: HTMLElement): BlockKind | null {
     return block.closest('OL') ? 'orderedList' : 'bulletList'
   }
   if (tag === 'PRE') return 'codeblock'
-  if (tag === 'H1' || tag === 'H2' || tag === 'H3') return tag.toLowerCase() as HeadingLevel
+  if (HEADING_TAGS.includes(tag)) return tag.toLowerCase() as HeadingLevel
   return 'paragraph'
 }
 
@@ -154,6 +154,31 @@ export function placeCaretAtEndOf(container: Node): void {
   range.selectNodeContents(container)
   range.collapse(false)
   applyRange(range)
+}
+
+/** 在容器内按文本偏移放置光标；容器无文本（如空 <code>）时放在开头 */
+export function placeCaretInTextAt(container: Node, offset: number): void {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
+  let remain = Math.max(0, offset)
+  let n: Node | null = walker.nextNode()
+  while (n) {
+    const len = (n.textContent ?? '').length
+    if (remain <= len) {
+      const range = document.createRange()
+      range.setStart(n, remain)
+      range.collapse(true)
+      applyRange(range)
+      return
+    }
+    remain -= len
+    n = walker.nextNode()
+  }
+  // 没有文本节点（空块）或超出总长：放块内末尾
+  if (remain === 0 && offset === 0) {
+    placeCaretAtStartOf(container)
+    return
+  }
+  placeCaretAtEndOf(container)
 }
 
 /** 光标放到编辑器最末尾可输入处 */
@@ -263,9 +288,39 @@ function replaceBlockWith(block: HTMLElement, tag: string): HTMLElement {
 function wrapAsCode(block: HTMLElement): HTMLElement {
   const pre = document.createElement('pre')
   const code = document.createElement('code')
-  code.textContent = block.textContent ?? ''
+  // 空块（如 <p><br></p>）转成空行文本，避免 br 造成的额外换行
+  code.textContent = isEmptyBlock(block) ? '' : textContentWithBreaks(block)
   pre.appendChild(code)
   block.replaceWith(pre)
+  return pre
+}
+
+/** 块内文本：<br> 视作换行，行内标记只取文本（代码块是纯文本容器） */
+function textContentWithBreaks(el: HTMLElement): string {
+  let out = ''
+  for (const n of Array.from(el.childNodes)) {
+    if (n.nodeType === Node.TEXT_NODE) {
+      out += n.textContent ?? ''
+    } else if (n.nodeType === Node.ELEMENT_NODE) {
+      const tag = (n as HTMLElement).tagName
+      if (tag === 'BR') out += '\n'
+      else out += textContentWithBreaks(n as HTMLElement)
+    }
+  }
+  return out
+}
+
+/** 把多个连续的段落/标题块合并为一个代码块（每块一行，中间空段保留为空行） */
+function mergeBlocksToCode(blocks: HTMLElement[]): HTMLElement {
+  const pre = document.createElement('pre')
+  const code = document.createElement('code')
+  const lines = blocks.map((b) =>
+    isEmptyBlock(b) ? '' : textContentWithBreaks(b),
+  )
+  code.textContent = lines.join('\n')
+  pre.appendChild(code)
+  blocks[0]!.replaceWith(pre)
+  for (let i = 1; i < blocks.length; i++) blocks[i]!.remove()
   return pre
 }
 
@@ -456,6 +511,17 @@ export function setBlockType(editor: HTMLElement, kind: BlockKind): void {
   if (!block) return
 
   // —— 列表类目标 ——
+  if (kind === 'codeblock' && block.tagName !== 'PRE') {
+    // 跨多行选区：把选中的所有段落/标题整段合并进同一个代码块
+    const many = selectedBlocks(editor)
+    if (many) {
+      const pre = mergeBlocksToCode(many)
+      const code = pre.firstElementChild as HTMLElement | null
+      if (code) placeCaretAtStartOf(code)
+      return
+    }
+  }
+
   if (kind === 'bulletList' || kind === 'orderedList') {
     const targetTag = kind === 'bulletList' ? 'UL' : 'OL'
 
@@ -499,7 +565,9 @@ export function setBlockType(editor: HTMLElement, kind: BlockKind): void {
     }
     case 'h1':
     case 'h2':
-    case 'h3': {
+    case 'h3':
+    case 'h4':
+    case 'h5': {
       if (isCode) return // 需先切回正文
       if (block.tagName === kind.toUpperCase()) {
         replaceBlockWith(block, 'p') // toggle：已是该标题 → 还原正文
@@ -512,13 +580,177 @@ export function setBlockType(editor: HTMLElement, kind: BlockKind): void {
       if (isCode) {
         unwrapCodeToParagraph(block)
       } else if (isPlainBlock(block)) {
-        wrapAsCode(block)
+        // 记录光标在块内的相对文本位置（转换会重建 DOM，原光标必失效）
+        let local = 0
+        const caret = getCaretRange(editor)
+        if (caret && block.contains(caret.startContainer)) {
+          const walker = document.createTreeWalker(
+            block,
+            NodeFilter.SHOW_TEXT,
+          )
+          let n: Node | null = walker.nextNode()
+          while (n) {
+            if (n === caret.startContainer) {
+              local = local + caret.startOffset
+              break
+            }
+            local += (n.textContent ?? '').length
+            n = walker.nextNode()
+          }
+        }
+        const pre = wrapAsCode(block)
+        const code =
+          (pre.firstElementChild as HTMLElement | null) ??
+          (() => {
+            const c = document.createElement('code')
+            pre.appendChild(c)
+            return c
+          })()
+        placeCaretInTextAt(code, local)
       }
       break
     }
     default:
       break
   }
+}
+
+/* ---------------- 选中区域强制转正文 ---------------- */
+
+/** 剥除某区域内全部行内样式痕迹：解包加粗/斜体/下划线/删除线/行内代码，
+ *  以及任何外来 span/font 残留，使文本恢复“无样式”的当前正文外观 */
+function stripInlineMarksIn(container: HTMLElement): void {
+  const TAGS = [
+    'B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'DEL',
+    'CODE', 'SPAN', 'FONT', 'SUB', 'SUP', 'MARK',
+  ]
+  const hits = Array.from(
+    container.querySelectorAll(TAGS.join(',')),
+  ).reverse() // 先解包最深层的
+  for (const el of hits) {
+    const children = Array.from(el.childNodes)
+    if (children.length === 0) {
+      el.remove()
+      continue
+    }
+    el.replaceWith(...children)
+  }
+}
+
+/** 顶层直接子块中，node 所在的那个 */
+function topChildOf(editor: HTMLElement, node: Node): HTMLElement | null {
+  let n: Node | null = node
+  while (n && n.parentNode && n.parentNode !== editor) n = n.parentNode
+  if (!n || n === editor || n.nodeType !== Node.ELEMENT_NODE) return null
+  return n as HTMLElement
+}
+
+/** 一个列表整体拆成若干正文段落（每项一段，含嵌套项） */
+function flattenListToParagraphs(list: HTMLElement): void {
+  stripInlineMarksIn(list)
+  const out: HTMLElement[] = []
+  const walkList = (l: HTMLElement) => {
+    for (const child of Array.from(l.children)) {
+      if (child.tagName === 'LI') walkLi(child as HTMLElement)
+    }
+  }
+  const walkLi = (li: HTMLElement) => {
+    const p = document.createElement('p')
+    const nested: HTMLElement[] = []
+    for (const child of Array.from(li.childNodes)) {
+      if (
+        child.nodeType === Node.ELEMENT_NODE &&
+        isListTag(child as HTMLElement)
+      ) {
+        nested.push(child as HTMLElement)
+      } else {
+        p.appendChild(child)
+      }
+    }
+    ensureBrForEmpty(p)
+    out.push(p)
+    for (const l of nested) walkList(l)
+  }
+  walkList(list)
+  let prev: HTMLElement | null = null
+  for (const p of out) {
+    if (prev) prev.after(p)
+    else list.replaceWith(p)
+    prev = p
+  }
+  if (prev === null) list.replaceWith(newParagraph())
+}
+
+/**
+ * “强制应用正文”：把选区（未塌缩）触碰到的内容全部恢复为当前正文配置 ——
+ * 剥除加粗/斜体/下划线/删除线/行内代码及外来 span/font 等一切行内样式，
+ * 标题/列表/代码块等块类型也一并转成正文段落。
+ * 选区塌缩（只有光标）时返回 false，由调用方按单块转换处理。
+ */
+export function paragraphsOnSelection(editor: HTMLElement): boolean {
+  const sel = getSelection()
+  if (
+    !sel ||
+    !sel.anchorNode ||
+    !sel.focusNode ||
+    (sel.anchorNode === sel.focusNode &&
+      sel.anchorOffset === sel.focusOffset)
+  ) {
+    return false
+  }
+  const a = topChildOf(editor, sel.anchorNode)
+  const b = topChildOf(editor, sel.focusNode)
+  if (!a || !b) return false
+  const kids = Array.from(editor.children) as HTMLElement[]
+  const ia = kids.indexOf(a)
+  const ib = kids.indexOf(b)
+  if (ia < 0 || ib < 0) return false
+  const lo = Math.min(ia, ib)
+  const hi = Math.max(ia, ib)
+
+  // 两端落在同一个顶层块
+  if (lo === hi) {
+    const top = a
+    if (top.tagName === 'UL' || top.tagName === 'OL') {
+      const liA = blockOfNode(sel.anchorNode, editor)
+      const liB = blockOfNode(sel.focusNode, editor)
+      if (liA && liB && liA !== liB) {
+        flattenListToParagraphs(top) // 跨多个列表项：整表拆成段落
+        return true
+      }
+      // 同在一个列表项里：剥样式后把该项提升为独立段落
+      if (liA) {
+        stripInlineMarksIn(liA)
+        liftListItemToParagraph(liA)
+        return true
+      }
+      return false
+    }
+    if (top.tagName === 'PRE') {
+      unwrapCodeToParagraph(top) // 代码行本身无行内样式，直接拆段
+      return true
+    }
+    stripInlineMarksIn(top)
+    if (HEADING_TAGS.includes(top.tagName) || top.tagName === 'DIV') {
+      replaceBlockWith(top, 'p')
+    }
+    return true
+  }
+
+  // 跨多个顶层块：逐块转正文并剥样式
+  for (const top of kids.slice(lo, hi + 1)) {
+    if (top.tagName === 'UL' || top.tagName === 'OL') {
+      flattenListToParagraphs(top)
+    } else if (top.tagName === 'PRE') {
+      unwrapCodeToParagraph(top)
+    } else {
+      stripInlineMarksIn(top)
+      if (HEADING_TAGS.includes(top.tagName) || top.tagName === 'DIV') {
+        replaceBlockWith(top, 'p')
+      }
+    }
+  }
+  return true
 }
 
 /** 顶部笔记标题回车：每次都在正文最顶部插入一个新的空段落并聚焦 */
@@ -601,11 +833,18 @@ export function codeExitOnArrowDown(editor: HTMLElement): boolean {
   const caret = getCaretRange(editor)
   if (!caret) return false
   const last = lastTextNodeOf(block)
+  // 光标可能在元素内部末尾边界（例如刚粘贴完停在 <code> 边界），也视为“末尾”
+  const sc = caret.startContainer
+  const elementEnd =
+    sc.nodeType === Node.ELEMENT_NODE &&
+    block.contains(sc) &&
+    caret.startOffset === (sc as HTMLElement).childNodes.length
   const atEnd =
     (last === null && isEmptyBlock(block)) ||
     (last !== null &&
-      caret.startContainer === last &&
-      caret.startOffset === (last.textContent ?? '').length)
+      sc === last &&
+      caret.startOffset === (last.textContent ?? '').length) ||
+    elementEnd
   if (!atEnd) return false
 
   let next = block.nextElementSibling as HTMLElement | null
@@ -908,9 +1147,15 @@ export function handleEnterKey(editor: HTMLElement): boolean {
 
 /* ---------------- 粘贴为纯文本 ---------------- */
 
+/** 光标折叠到 node 之后；node 为文本节点时收进文本内部末尾，
+ *  避免落到 code/pre 元素边界导致“末尾”判定失效 */
 function selectCollapsedAfter(node: Node): void {
   const range = document.createRange()
-  range.setStartAfter(node)
+  if (node.nodeType === Node.TEXT_NODE) {
+    range.setStart(node, (node.textContent ?? '').length)
+  } else {
+    range.setStartAfter(node)
+  }
   range.collapse(true)
   applyRange(range)
 }
@@ -924,9 +1169,21 @@ export function pasteTextInto(editor: HTMLElement, text: string): void {
 
   // 代码块内：整段文本（含换行）
   if (block && block.tagName === 'PRE') {
-    caret.deleteContents()
+    // 兜底：刚创建的代码块可能让浏览器把光标丢到块外/上一段，
+    // 此时先把光标放回 <code> 开头再粘贴，避免内容落到代码块外
+    let range: Range | null = caret
+    if (!range || !block.contains(range.startContainer)) {
+      // 兜底：刚创建的代码块可能让浏览器把光标丢到块外/上一段，
+      // 此时先把光标放回 <code> 开头再粘贴，避免内容落到代码块外
+      const code =
+        (block.firstElementChild as HTMLElement | null) ?? block
+      placeCaretAtStartOf(code)
+      range = getCaretRange(editor)
+      if (range === null) return
+    }
+    range.deleteContents()
     const node = document.createTextNode(clean)
-    caret.insertNode(node)
+    range.insertNode(node)
     selectCollapsedAfter(node)
     return
   }

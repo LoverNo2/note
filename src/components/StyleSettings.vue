@@ -17,7 +17,7 @@ const { state, defaults } = useNoteStyles();
 const { toast } = useToast();
 
 /** 四种块（固定顺序渲染） */
-const BLOCK_KEYS: TextBlockKey[] = ["paragraph", "h1", "h2", "h3"];
+const BLOCK_KEYS: TextBlockKey[] = ["paragraph", "h1", "h2", "h3", "h4", "h5"];
 
 /** 对齐方式（图标分段按钮） */
 const ALIGN_OPTS: ReadonlyArray<{

@@ -10,6 +10,8 @@ export type ToolbarAction =
   | "h1"
   | "h2"
   | "h3"
+  | "h4"
+  | "h5"
   | "codeblock"
   | "divider"
   | "bulletList"
@@ -91,6 +93,24 @@ function iconOf(action: ToolbarAction): IconName {
       @click="emit('exec', 'h3')"
     >
       <Icon :name="iconOf('h3')" />
+    </button>
+    <button
+      class="btn"
+      :class="{ active: isBlockActive('h4') }"
+      title="四级标题"
+      @mousedown.prevent
+      @click="emit('exec', 'h4')"
+    >
+      <Icon :name="iconOf('h4')" />
+    </button>
+    <button
+      class="btn"
+      :class="{ active: isBlockActive('h5') }"
+      title="五级标题"
+      @mousedown.prevent
+      @click="emit('exec', 'h5')"
+    >
+      <Icon :name="iconOf('h5')" />
     </button>
 
     <span class="sep"></span>
@@ -177,7 +197,7 @@ function iconOf(action: ToolbarAction): IconName {
       class="btn"
       :class="{ active: ui.marks.inlineCode }"
       :disabled="ui.inCode"
-      title="行内代码（需先选中文字）"
+      title="行内代码（需先选中文字；⌘E / Ctrl+E）"
       @mousedown.prevent
       @click="emit('exec', 'inlineCode')"
     >

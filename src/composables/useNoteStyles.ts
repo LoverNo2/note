@@ -9,7 +9,13 @@ import { computed, reactive, watch } from 'vue'
  * - 通过 CSS 变量输出，.note-content 里的 p / h1 / h2 / h3 实时读取。
  */
 
-export type TextBlockKey = 'paragraph' | 'h1' | 'h2' | 'h3'
+export type TextBlockKey =
+  | 'paragraph'
+  | 'h1'
+  | 'h2'
+  | 'h3'
+  | 'h4'
+  | 'h5'
 
 export type TextAlign = 'left' | 'center' | 'right' | 'justify'
 
@@ -43,6 +49,8 @@ export const TEXT_BLOCK_LABELS: Record<TextBlockKey, string> = {
   h1: '标题 1',
   h2: '标题 2',
   h3: '标题 3',
+  h4: '标题 4',
+  h5: '标题 5',
 }
 
 /** 与 style.css 中的 var(--x-*, fallback) 保持一致 */
@@ -55,17 +63,27 @@ export const TEXT_STYLE_DEFAULTS: Record<TextBlockKey, TextBlockStyle> = {
   h1: {
     fontSize: 26, fontWeight: 700, lineHeight: 1.4, color: '#37352f',
     italic: false, underline: false, strike: false,
-    letterSpacing: -0.012, align: 'left', textIndent: 0, marginBottom: 0,
+    letterSpacing: -0.012, align: 'left', textIndent: 0, marginBottom: 10,
   },
   h2: {
     fontSize: 22, fontWeight: 650, lineHeight: 1.4, color: '#37352f',
     italic: false, underline: false, strike: false,
-    letterSpacing: -0.012, align: 'left', textIndent: 0, marginBottom: 0,
+    letterSpacing: -0.012, align: 'left', textIndent: 0, marginBottom: 8,
   },
   h3: {
     fontSize: 19, fontWeight: 620, lineHeight: 1.4, color: '#37352f',
     italic: false, underline: false, strike: false,
-    letterSpacing: -0.012, align: 'left', textIndent: 0, marginBottom: 0,
+    letterSpacing: -0.012, align: 'left', textIndent: 0, marginBottom: 6,
+  },
+  h4: {
+    fontSize: 17, fontWeight: 600, lineHeight: 1.45, color: '#37352f',
+    italic: false, underline: false, strike: false,
+    letterSpacing: -0.008, align: 'left', textIndent: 0, marginBottom: 5,
+  },
+  h5: {
+    fontSize: 15.5, fontWeight: 560, lineHeight: 1.5, color: '#37352f',
+    italic: false, underline: false, strike: false,
+    letterSpacing: -0.005, align: 'left', textIndent: 0, marginBottom: 4,
   },
 }
 
@@ -77,6 +95,8 @@ const VAR_SUFFIX: Record<TextBlockKey, string> = {
   h1: 'h1',
   h2: 'h2',
   h3: 'h3',
+  h4: 'h4',
+  h5: 'h5',
 }
 
 const ALIGNS: TextAlign[] = ['left', 'center', 'right', 'justify']
@@ -87,6 +107,8 @@ function cloneDefaults(): Record<TextBlockKey, TextBlockStyle> {
     h1: { ...TEXT_STYLE_DEFAULTS.h1 },
     h2: { ...TEXT_STYLE_DEFAULTS.h2 },
     h3: { ...TEXT_STYLE_DEFAULTS.h3 },
+    h4: { ...TEXT_STYLE_DEFAULTS.h4 },
+    h5: { ...TEXT_STYLE_DEFAULTS.h5 },
   }
 }
 
@@ -135,7 +157,14 @@ function load(): Record<TextBlockKey, TextBlockStyle> {
         ? (s.align as TextAlign)
         : b.align
       b.textIndent = num(s.textIndent, 0, 3.5, b.textIndent)
-      b.marginBottom = Math.round(num(s.marginBottom, 0, 48, b.marginBottom))
+      if (key === 'paragraph') {
+        // 正文段间距一直生效，沿用用户配置
+        b.marginBottom = Math.round(
+          num(s.marginBottom, 0, 48, b.marginBottom),
+        )
+      }
+      // 标题：旧版本 marginBottom 字段未接入 CSS（一直不生效），
+      // 由新版视觉默认接管，避免旧存的 0 压扁标题与正文的间距
     }
   } catch {
     /* 读取失败用默认 */

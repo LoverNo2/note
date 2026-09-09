@@ -5,6 +5,8 @@ export type IconName =
   | "h1"
   | "h2"
   | "h3"
+  | "h4"
+  | "h5"
   | "codeblock"
   | "divider"
   | "bulletList"
@@ -40,7 +42,13 @@ defineProps<{ name: IconName }>();
 
     <!-- 标题：字母徽标（vertical: dominant-baseline=central + y=12 居中） -->
     <text
-      v-else-if="name === 'h1' || name === 'h2' || name === 'h3'"
+      v-else-if="
+        name === 'h1' ||
+        name === 'h2' ||
+        name === 'h3' ||
+        name === 'h4' ||
+        name === 'h5'
+      "
       x="12"
       y="12"
       text-anchor="middle"

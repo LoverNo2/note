@@ -29,6 +29,7 @@ import {
   isInsideEditor,
   isMarkActive,
   pasteTextInto,
+  paragraphsOnSelection,
   restoreCaretByTextIndex,
   setBlockType,
   toggleInlineMark,
@@ -311,10 +312,20 @@ function exec(action: ToolbarAction): void {
   }
 
   switch (action) {
-    case "paragraph":
+    case "paragraph": {
+      // 有选中区域时：把选区内触碰到的块全部强制转成正文段落
+      if (paragraphsOnSelection(el)) {
+        afterDomChange();
+        return;
+      }
+      setBlockType(el, "paragraph");
+      break;
+    }
     case "h1":
     case "h2":
     case "h3":
+    case "h4":
+    case "h5":
     case "codeblock":
     case "bulletList":
     case "orderedList":
@@ -363,6 +374,12 @@ function onKeydown(e: KeyboardEvent): void {
   if (mod && (e.key === "y" || e.key === "Y")) {
     e.preventDefault();
     doRedo();
+    return;
+  }
+  // ⌘E / Ctrl+E：快速创建行内代码（需先选中文字；toggle）
+  if (mod && (e.key === "e" || e.key === "E")) {
+    e.preventDefault();
+    exec("inlineCode");
     return;
   }
   if (mod) return;
@@ -420,13 +437,16 @@ function onPaste(e: ClipboardEvent): void {
   e.preventDefault();
   const plain = e.clipboardData?.getData("text/plain") ?? "";
   const rawHtml = e.clipboardData?.getData("text/html") ?? "";
+  // 只有从本笔记本内部复制（onCopy 写入的自定义标记）才带样式；外部一律纯文本
+  const internal =
+    e.clipboardData?.getData("text/notebook-internal") === "1";
   let inserted = false;
 
   // 光标在代码块内：一律按纯文本粘贴（保留换行/缩进，绝不插入块标签）
   const inCode = currentBlockKind(el) === "codeblock";
 
-  // 优先富文本（段落内可用）：清洗后以 HTML 插入，保留标题/粗体/斜体等样式
-  if (!inCode && rawHtml && looksLikeHtml(rawHtml)) {
+  // 仅内部复制且不在代码块内时，才保留样式以 HTML 插入
+  if (!inCode && internal && rawHtml && looksLikeHtml(rawHtml)) {
     const cleaned = sanitizeHtml(rawHtml);
     if (/<[a-z!\/]/i.test(cleaned)) {
       const rich = normalizeHtml(cleaned);
@@ -439,7 +459,8 @@ function onPaste(e: ClipboardEvent): void {
     }
   }
 
-  // 无可用富文本或插入失败：退回纯文本
+  // 外部富文本 / 无可保留样式：降级为纯文本粘贴，
+  // 结果只有两种形态——代码块内（多行原样）或正文段落
   if (!inserted) {
     const text = plain !== "" ? plain : textFromHtml(rawHtml);
     if (text) {
@@ -471,6 +492,8 @@ function onCopy(e: ClipboardEvent): void {
 
   e.clipboardData?.setData("text/html", cleaned);
   e.clipboardData?.setData("text/plain", sel.toString());
+  // 内部标记：粘贴回本笔记时据此保留样式；外部应用可忽略
+  e.clipboardData?.setData("text/notebook-internal", "1");
   e.preventDefault();
 }
 
