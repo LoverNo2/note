@@ -567,6 +567,30 @@ function lastTextNodeOf(container: Node): Text | null {
 }
 
 /**
+ * 自愈：把编辑区顶层游离的文本节点收拢到相邻前一个块里
+ * （例如往代码块粘贴时被浏览器顶到 <pre> 外的内容，会放回代码块中；
+ * 正常编辑不会产生顶层游离文本）。
+ */
+export function healStrayTopLevelText(editor: HTMLElement): void {
+  for (const node of Array.from(editor.childNodes)) {
+    if (node.nodeType !== Node.TEXT_NODE) continue
+    const text = node.textContent ?? ''
+    const prev = node.previousSibling
+    if (prev && prev.nodeType === Node.ELEMENT_NODE) {
+      const el = prev as HTMLElement
+      const target =
+        el.tagName === 'PRE' && el.firstElementChild
+          ? el.firstElementChild
+          : el
+      target.appendChild(document.createTextNode(text))
+      node.remove()
+    } else {
+      node.remove()
+    }
+  }
+}
+
+/**
  * 光标在代码块最后一行行尾并按 ↓ 方向键：若代码块是正文最后一个内容块，
  * 在其下方新建一个正文段落并把光标移过去（相当于“跳出代码块另起新行”）。
  * 返回是否已处理；代码块后还有其它内容时返回 false 交给浏览器默认移动光标。

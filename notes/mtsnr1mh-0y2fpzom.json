@@ -1,7 +1,7 @@
 {
   "id": "mtsnr1mh-0y2fpzom",
-  "title": "主循环流程",
-  "content": "<h1>一、启动阶段的调用链</h1><p>引擎的起点是main方法</p><pre><p><span style=\"letter-spacing: 0.005em;\">main()                                    // 平台入口，如 platform/windows/godot_windows.cpp</span></p><p>  → Main::setup()                         // 初始化引擎各层（Core、Servers、Scene、Drivers）\n  → Main::start()                         // 创建 SceneTree（默认 MainLoop），加载主场景\n  → OS::run()                             // 进入主循环</p><code></code></pre><p>在&nbsp;<code>Main::start()</code>&nbsp;中，引擎会创建一个&nbsp;<code>SceneTree</code>&nbsp;对象（它是&nbsp;<code>MainLoop</code>&nbsp;的默认子类实现），并将其设置到&nbsp;<code>OS</code>&nbsp;的&nbsp;<code>mainloop</code>&nbsp;指针上。</p>",
+  "title": "Godot",
+  "content": "<h1>一、启动阶段的调用链</h1><p>引擎的起点是main方法</p><pre><p><span style=\"letter-spacing: 0.005em;\"></span></p>function main() {\n    Main.setup();   // 初始化引擎各层（Core、Servers、Scene、Drivers）\n    Main.start();   // 创建 SceneTree（默认 MainLoop），加载主场景\n    OS.run();       // 进入主循环\n}<p></p></pre><h1>二、SceneTree的创建与主场景的加载</h1><p>在&nbsp;<code>Main::start()</code>&nbsp;中，引擎会创建一个&nbsp;<code>SceneTree</code>&nbsp;对象（它是&nbsp;<code>MainLoop</code>&nbsp;的默认子类实现），并将其设置到&nbsp;<code>OS</code>&nbsp;的&nbsp;<code>mainloop</code>&nbsp;指针上。</p><h1>三、主循环</h1><pre>function os_run() {\n    if (!main_loop) {\n        return;\n    }\n\n    // 初始化主循环\n    main_loop.initialize();\n\n    // 主循环\n    while (true) {\n        // 处理窗口/输入事件\n        DisplayServer.get_singleton().process_events();\n\n        // 引擎每帧迭代，若返回 true 则退出\n        if (Main.iteration()) {\n            break;\n        }\n    }\n\n    // 结束\n    main_loop.finalize();<br>}</pre><pre><code></code></pre>",
   "createdAt": "2026-09-08T12:40:43.769Z",
-  "updatedAt": "2026-09-09T06:47:21.231Z"
+  "updatedAt": "2026-09-09T07:05:19.963Z"
 }

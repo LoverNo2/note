@@ -22,6 +22,7 @@ import {
   ensureStartParagraph,
   focusEditorStart,
   getCaretRange,
+  healStrayTopLevelText,
   handleEnterKey,
   handleTabKey,
   insertDivider,
@@ -426,8 +427,11 @@ function onPaste(e: ClipboardEvent): void {
   const rawHtml = e.clipboardData?.getData("text/html") ?? "";
   let inserted = false;
 
-  // 优先富文本：清洗后以 HTML 插入，保留标题/粗体/斜体/列表等样式
-  if (rawHtml && looksLikeHtml(rawHtml)) {
+  // 光标在代码块内：一律按纯文本粘贴（保留换行/缩进，绝不插入块标签）
+  const inCode = currentBlockKind(el) === "codeblock";
+
+  // 优先富文本（段落内可用）：清洗后以 HTML 插入，保留标题/粗体/斜体等样式
+  if (!inCode && rawHtml && looksLikeHtml(rawHtml)) {
     const cleaned = sanitizeHtml(rawHtml);
     if (/<[a-z!\/]/i.test(cleaned)) {
       const rich = normalizeHtml(cleaned);
@@ -448,6 +452,9 @@ function onPaste(e: ClipboardEvent): void {
       inserted = true;
     }
   }
+
+  // 自愈：任何被浏览器顶到块外的游离文本收回到相邻块（尤其 <pre>）
+  healStrayTopLevelText(el);
 
   scheduleSync();
   refreshUi();

@@ -462,6 +462,13 @@ textarea,
   font-size: inherit;
   background: transparent;
   padding: 0;
+  border-radius: 0;
+}
+/* 空的代码块也保有一整行高度，光标不会只显示半截 */
+.note-content pre code:empty {
+  display: inline-block;
+  min-width: 1em;
+  min-height: 1.7em;
 }
 
 /* 行内代码 */
