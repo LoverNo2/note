@@ -59,6 +59,17 @@ function onCreate(): void {
   toast("已新建笔记", "success");
 }
 
+function onExportPdf(): void {
+  // 临时清空页面标题，避免浏览器页眉打印出 “Notebook” 等文字
+  const prev = document.title;
+  document.title = "";
+  try {
+    window.print();
+  } finally {
+    document.title = prev;
+  }
+}
+
 function onDocPointerdown(e: PointerEvent): void {
   if (!open.value) return;
   const target = e.target as Element | null;
@@ -151,8 +162,31 @@ onBeforeUnmount(() =>
       </div>
     </div>
 
-    <!-- 右侧：正文与标题样式设置 -->
-    <StyleSettings />
+    <!-- 右侧：导出 PDF · 样式设置（相邻排布，尺寸一致） -->
+    <div class="appbar__right">
+      <button
+        class="pdf-btn"
+        title="把当前笔记打印 / 另存为 PDF"
+        aria-label="导出 PDF"
+        @click="onExportPdf"
+      >
+        <svg viewBox="0 0 24 24" class="pdf-btn-ic" aria-hidden="true">
+          <text
+            x="12"
+            y="13.2"
+            text-anchor="middle"
+            dominant-baseline="central"
+            font-size="11"
+            font-weight="600"
+            fill="currentColor"
+            stroke="none"
+          >
+            PDF
+          </text>
+        </svg>
+      </button>
+      <StyleSettings />
+    </div>
   </header>
 </template>
 
@@ -168,6 +202,43 @@ onBeforeUnmount(() =>
   border-bottom: none;
   background: var(--bg-canvas);
   box-shadow: var(--neu-raise-sm);
+}
+
+.appbar__right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+/* 导出 PDF 按钮：尺寸与样式设置按钮(.ss__btn 36×34)一致 */
+.pdf-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 34px;
+  border: none;
+  border-radius: 10px;
+  background: var(--bg-canvas);
+  color: var(--text-mid);
+  cursor: pointer;
+  box-shadow: var(--neu-raise-sm);
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.22s ease;
+}
+.pdf-btn-ic {
+  width: 22px;
+  height: 22px;
+}
+.pdf-btn:hover:not(:active) {
+  background: rgba(255, 255, 255, 0.3);
+  color: var(--text-strong);
+}
+.pdf-btn:active {
+  box-shadow: var(--neu-sink-sm);
 }
 
 .appbar__left {

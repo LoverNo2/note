@@ -162,6 +162,83 @@ body,
   min-width: 720px;
 }
 
+/* ============================================================
+   打印 / 导出 PDF：只输出当前笔记的纸张卡片
+   ============================================================ */
+@media print {
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* 规范纸张与边距（页眉/页脚由浏览器打印对话框控制） */
+  @page {
+    size: A4;
+    margin: 14mm 16mm;
+  }
+  /* 只保留正文；隐藏一切 UI 与标题输入框 */
+  .appbar,
+  .fmtline,
+  .page__foot,
+  .title,
+  .toast-slot,
+  .welcome {
+    display: none !important;
+  }
+  html,
+  body,
+  #app,
+  .app,
+  .editor {
+    height: auto !important;
+    background: #fff !important;
+  }
+  .app {
+    display: block !important;
+  }
+  .editor {
+    display: block !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+  .editor__body {
+    height: auto;
+    overflow: visible;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+  /* 卡片完全摊开：无阴影、无圆角、无内外两层留白（!important 压过 scoped 样式） */
+  .page {
+    margin: 0 !important;
+    max-width: none !important;
+    width: auto !important;
+    height: auto !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    padding: 0 !important;
+  }
+  .page__content {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+  .note-content {
+    background: #fff !important;
+  }
+  .note-content p,
+  .note-content h1,
+  .note-content h2,
+  .note-content h3,
+  .note-content li,
+  .note-content pre {
+    break-inside: avoid;
+  }
+}
+
 body {
   margin: 0;
   font-family: var(--font-sans);
