@@ -478,7 +478,14 @@ textarea,
 .note-content ol {
   margin: 0.3em 0;
   /* 符号/数字列与正文首行缩进对齐：在默认符号列基础上叠加正文首行缩进 */
-  padding-left: calc(var(--p-indent, 0em) + 1.5em);
+  padding-left: calc(var(--p-indent, 0em) + 1em);
+}
+/* 无序圆点占宽更小，单独再收紧（有序数字列保持稍宽） */
+.note-content ul {
+  padding-left: calc(var(--p-indent, 0em) + 0.85em);
+}
+.note-content ol {
+  padding-left: calc(var(--p-indent, 0em) + 1.45em);
 }
 .note-content ul {
   list-style: disc;
@@ -500,7 +507,8 @@ textarea,
   padding-left: 0.2em;
 }
 .note-content li::marker {
-  color: var(--text-faint);
+  color: #000;
+  font-size: 0.8em;
 }
 .note-content ul ul,
 .note-content ol ul,
