@@ -15,6 +15,7 @@ export type ToolbarAction =
   | 'orderedList'
   | 'bold'
   | 'italic'
+  | 'underline'
   | 'strike'
   | 'inlineCode'
   | 'undo'
@@ -120,6 +121,14 @@ function iconOf(action: ToolbarAction): IconName {
       @mousedown.prevent
       @click="emit('exec', 'italic')"
     ><Icon :name="iconOf('italic')" /></button>
+    <button
+      class="btn"
+      :class="{ active: ui.marks.underline }"
+      :disabled="ui.inCode"
+      title="下划线（需先选中文字）"
+      @mousedown.prevent
+      @click="emit('exec', 'underline')"
+    ><Icon :name="iconOf('underline')" /></button>
     <button
       class="btn"
       :class="{ active: ui.marks.strike }"

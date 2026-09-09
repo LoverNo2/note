@@ -252,7 +252,13 @@ function refreshUi(): void {
   if (r) lastSel = r.cloneRange();
 
   ui.kind = currentBlockKind(el);
-  const marks = ["bold", "italic", "strike", "inlineCode"] as const;
+  const marks = [
+    "bold",
+    "italic",
+    "underline",
+    "strike",
+    "inlineCode",
+  ] as const;
   for (const m of marks) {
     ui.marks[m] = isMarkActive(el, m);
   }
@@ -283,6 +289,7 @@ function hasTextSelection(el: HTMLElement): boolean {
 const MARK_ACTIONS = new Set<InlineMark>([
   "bold",
   "italic",
+  "underline",
   "strike",
   "inlineCode",
 ]);

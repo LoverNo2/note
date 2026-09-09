@@ -14,11 +14,12 @@ export type BlockKind =
   | 'codeblock'
   | 'bulletList'
   | 'orderedList'
-export type InlineMark = 'bold' | 'italic' | 'strike' | 'inlineCode'
+export type InlineMark = 'bold' | 'italic' | 'underline' | 'strike' | 'inlineCode'
 
 const MARK_TAGS: Record<InlineMark, string[]> = {
   bold: ['B', 'STRONG'],
   italic: ['I', 'EM'],
+  underline: ['U'],
   strike: ['S', 'STRIKE', 'DEL'],
   inlineCode: ['CODE'],
 }
@@ -431,7 +432,13 @@ export interface ToolbarUi {
 export function emptyToolbarUi(): ToolbarUi {
   return {
     kind: null,
-    marks: { bold: false, italic: false, strike: false, inlineCode: false },
+    marks: {
+      bold: false,
+      italic: false,
+      underline: false,
+      strike: false,
+      inlineCode: false,
+    },
     collapsed: true,
     inCode: false,
     inList: false,

@@ -1,22 +1,23 @@
 <script setup lang="ts">
 /** 工具栏图标名（与 ToolbarAction 语义一一对应） */
 export type IconName =
-  | 'paragraph'
-  | 'h1'
-  | 'h2'
-  | 'h3'
-  | 'codeblock'
-  | 'divider'
-  | 'bulletList'
-  | 'orderedList'
-  | 'bold'
-  | 'italic'
-  | 'strike'
-  | 'inlineCode'
-  | 'undo'
-  | 'redo'
+  | "paragraph"
+  | "h1"
+  | "h2"
+  | "h3"
+  | "codeblock"
+  | "divider"
+  | "bulletList"
+  | "orderedList"
+  | "bold"
+  | "italic"
+  | "underline"
+  | "strike"
+  | "inlineCode"
+  | "undo"
+  | "redo";
 
-defineProps<{ name: IconName }>()
+defineProps<{ name: IconName }>();
 </script>
 
 <template>
@@ -47,7 +48,9 @@ defineProps<{ name: IconName }>()
       font-weight="500"
       stroke="none"
       fill="currentColor"
-    >{{ name.toUpperCase() }}</text>
+    >
+      {{ name.toUpperCase() }}
+    </text>
 
     <!-- 代码块：</> 徽标（三字符，用小一号字号避免溢出） -->
     <text
@@ -60,7 +63,9 @@ defineProps<{ name: IconName }>()
       font-weight="600"
       stroke="none"
       fill="currentColor"
-    >&#60;/&#62;</text>
+    >
+      &#60;/&#62;
+    </text>
 
     <!-- 分割线 -->
     <template v-else-if="name === 'divider'">
@@ -87,7 +92,9 @@ defineProps<{ name: IconName }>()
         font-weight="600"
         stroke="none"
         fill="currentColor"
-      >1</text>
+      >
+        1
+      </text>
       <text
         class="num"
         x="12"
@@ -97,7 +104,9 @@ defineProps<{ name: IconName }>()
         font-weight="600"
         stroke="none"
         fill="currentColor"
-      >2</text>
+      >
+        2
+      </text>
     </template>
 
     <!-- 粗体 / 斜体 / 删除线：字母徽标 -->
@@ -110,7 +119,9 @@ defineProps<{ name: IconName }>()
       font-weight="700"
       stroke="none"
       fill="currentColor"
-    >B</text>
+    >
+      B
+    </text>
     <text
       v-else-if="name === 'italic'"
       x="12"
@@ -121,7 +132,26 @@ defineProps<{ name: IconName }>()
       font-style="italic"
       stroke="none"
       fill="currentColor"
-    >I</text>
+    >
+      I
+    </text>
+
+    <!-- 下划线：字母 U + 底部横线（横线与字母留出空隙） -->
+    <template v-else-if="name === 'underline'">
+      <text
+        x="12"
+        y="11.5"
+        text-anchor="middle"
+        dominant-baseline="central"
+        font-weight="600"
+        stroke="none"
+        fill="currentColor"
+      >
+        U
+      </text>
+      <line x1="8.6" y1="20.3" x2="16.4" y2="20.3" stroke-width="1.4" />
+    </template>
+
     <template v-else-if="name === 'strike'">
       <text
         x="12"
@@ -131,8 +161,11 @@ defineProps<{ name: IconName }>()
         font-weight="600"
         stroke="none"
         fill="currentColor"
-      >S</text>
-      <line x1="7.6" y1="12" x2="16.4" y2="12" stroke-width="1.4" />
+      >
+        S
+      </text>
+      <!-- 横线压在 S 字形中部 -->
+      <line x1="5.4" y1="12.4" x2="18.6" y2="12.4" stroke-width="1.4" />
     </template>
 
     <!-- 行内代码：花括号徽标 -->
@@ -145,7 +178,9 @@ defineProps<{ name: IconName }>()
       font-weight="500"
       stroke="none"
       fill="currentColor"
-    >{}</text>
+    >
+      {}
+    </text>
 
     <!-- 撤销 / 重做：弯箭头 -->
     <path
@@ -173,8 +208,7 @@ defineProps<{ name: IconName }>()
 }
 /* 文字徽标统一字号与字体；字号在 SVG 用户单位下随 viewBox 缩放 */
 .ic text {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial,
-    sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   font-size: 16px;
 }
 /* 特殊徽标用小一号字号：代码块（三字符）、有序列表数字（两行） */

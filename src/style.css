@@ -510,6 +510,16 @@ textarea,
   color: #000;
   font-size: 0.8em;
 }
+
+/* 下划线离文字稍远一点 */
+.note-content p,
+.note-content h1,
+.note-content h2,
+.note-content h3,
+.note-content li,
+.note-content u {
+  text-underline-offset: 0.3em;
+}
 .note-content ul ul,
 .note-content ol ul,
 .note-content ul ol,
