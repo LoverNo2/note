@@ -1,4 +1,4 @@
-import { computed, reactive } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import type { Note } from '../types'
 
 /**
@@ -43,6 +43,11 @@ const sortedNotes = computed<Note[]>(() =>
   [...state.notes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
 )
 
+/** 是否有未保存的修改（编辑后为 true，点「保存」写回后为 false） */
+const dirty = ref(false)
+/** 最近一次成功保存到项目的时间（HH:MM:SS） */
+const savedLabel = ref<string | null>(null)
+
 const currentNote = computed<Note | null>(() => {
   if (!state.currentId) return null
   return state.notes.find((n) => n.id === state.currentId) ?? null
@@ -55,6 +60,7 @@ function createNote(): string {
   const note: Note = { id: genId(), title: '', content: '', createdAt: now, updatedAt: now }
   state.notes.push(note)
   state.currentId = note.id
+  dirty.value = true // 新笔记尚未写回项目
   return note.id
 }
 
@@ -76,6 +82,11 @@ function deleteNote(id: string): void {
 function markEdited(): void {
   const note = currentNote.value
   if (note) note.updatedAt = new Date().toISOString()
+}
+
+/** 标记内容已有修改（尚未保存到项目） */
+function markDirty(): void {
+  dirty.value = true
 }
 
 /* ---------------- 项目 notes/ 目录读写 ---------------- */
@@ -113,6 +124,12 @@ async function saveToProject(): Promise<'ok' | 'error'> {
       const detail = (await resp.json().catch(() => null)) as { error?: string } | null
       throw new Error(detail?.error ?? `HTTP ${resp.status}`)
     }
+    dirty.value = false
+    savedLabel.value = new Date().toLocaleTimeString('zh-CN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })
     return 'ok'
   } catch {
     return 'error'
@@ -131,6 +148,9 @@ export function useNotes() {
     selectNote,
     deleteNote,
     markEdited,
+    markDirty,
+    dirty,
+    savedLabel,
     loadFromProject,
     saveToProject,
   }

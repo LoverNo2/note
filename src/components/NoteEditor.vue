@@ -43,14 +43,8 @@ import {
 import { useNotes } from "../composables/useNotes";
 import { useToast } from "../composables/useToast";
 
-const { currentNote, markEdited } = useNotes();
-const { toasts, toast } = useToast();
-
-/** 只展示最新一条提示（显示在格式条同一行右侧） */
-const latestToast = computed(() => {
-  const list = toasts.value;
-  return list.length > 0 ? list[list.length - 1] : null;
-});
+const { currentNote, dirty, markDirty, markEdited } = useNotes();
+const { toast } = useToast();
 /** 正文与标题的可视化样式（CSS 变量实时注入 .note-content） */
 const { cssVars } = useNoteStyles();
 
@@ -76,6 +70,7 @@ const wordCount = computed(() => {
 
 function onTitleInput(): void {
   markEdited();
+  markDirty();
 }
 
 function onTitleEnter(): void {
@@ -482,6 +477,7 @@ function onCopy(e: ClipboardEvent): void {
 function onContentInput(): void {
   scheduleSync();
   updateEmptyClass();
+  markDirty();
 }
 
 function onBlur(): void {
@@ -513,19 +509,9 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="editor">
-    <!-- 顶部格式工具条 + 右侧提示文字（同一行） -->
+    <!-- 顶部格式工具条（同一行右侧：保存状态 + 时间） -->
     <div class="fmtline">
-      <NoteToolbar :ui="ui" @exec="exec" />
-
-      <transition name="slotfade" mode="out-in">
-        <span
-          v-if="latestToast"
-          :key="latestToast.id"
-          class="toast-slot"
-          :class="`toast-slot--${latestToast.type}`"
-          >{{ latestToast.text }}</span
-        >
-      </transition>
+      <NoteToolbar :ui="ui" :dirty="dirty" @exec="exec" />
     </div>
 
     <div class="editor__body">
@@ -578,45 +564,13 @@ onBeforeUnmount(() => {
   position: relative; /* 供右上角样式设置悬浮定位 */
 }
 
-/* ---------- 格式条行：工具条占满 + 右侧提示文字（浮层，不影响 fmtbar 宽度与边框） ---------- */
+/* ---------- 格式条行：工具条占满一整行 ---------- */
 .fmtline {
-  position: relative;
   flex: none;
 }
 .fmtline :deep(.fmtbar) {
   width: 100%;
   min-width: 0;
-}
-.toast-slot {
-  position: absolute;
-  top: 50%;
-  right: 14px;
-  transform: translateY(-50%);
-  max-width: 34vw;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: 1;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-mid);
-  pointer-events: none;
-  z-index: 2;
-}
-.toast-slot--success {
-  color: #0d8f5f;
-}
-.toast-slot--error {
-  color: #cf3b3b;
-}
-.slotfade-enter-active,
-.slotfade-leave-active {
-  transition: opacity 0.18s ease;
-}
-.slotfade-enter-from,
-.slotfade-leave-to {
-  opacity: 0;
 }
 
 /* ---------- 页面视口 ---------- */
