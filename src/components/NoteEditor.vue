@@ -10,6 +10,7 @@ import {
 } from "vue";
 import NoteToolbar from "./NoteToolbar.vue";
 import type { ToolbarAction } from "./NoteToolbar.vue";
+import NoteOutline from "./NoteOutline.vue";
 import { useNoteStyles } from "../composables/useNoteStyles";
 import type { BlockKind, InlineMark, ToolbarUi } from "../editor/blocks";
 import {
@@ -57,8 +58,81 @@ const { cssVars } = useNoteStyles();
 
 const titleInput = ref<HTMLInputElement | null>(null);
 const contentEl = ref<HTMLDivElement | null>(null);
+const pageContentEl = ref<HTMLDivElement | null>(null);
+/** 目录树显隐（默认显示） */
+const outlineOpen = ref(true);
+
+function toggleOutline(): void {
+  outlineOpen.value = !outlineOpen.value;
+}
 
 const ui = reactive<ToolbarUi>(emptyToolbarUi());
+
+/* ================= 左侧目录树 ================= */
+
+interface OutlineEntry {
+  level: number;
+  text: string;
+  el: HTMLElement;
+}
+
+const outlineEntries = ref<OutlineEntry[]>([]);
+const outlineItems = computed(() =>
+  outlineEntries.value.map((e) => ({ level: e.level, text: e.text })),
+);
+const outlineActive = ref(0);
+
+/** 从编辑器内容（H1-H5）重建目录 */
+function refreshOutline(): void {
+  const el = contentEl.value;
+  if (!el) return;
+  const entries: OutlineEntry[] = [];
+  for (const child of Array.from(el.children) as HTMLElement[]) {
+    const m = /^H([1-5])$/.exec(child.tagName);
+    if (!m) continue;
+    entries.push({
+      level: Number(m[1]),
+      text: (child.textContent ?? "").trim() || "未命名标题",
+      el: child,
+    });
+  }
+  outlineEntries.value = entries;
+  updateOutlineActive();
+}
+
+let outlineTimer: number | undefined;
+function scheduleOutline(): void {
+  window.clearTimeout(outlineTimer);
+  outlineTimer = window.setTimeout(refreshOutline, 250);
+}
+
+/** 点击目录：滚动到对应标题（不抢焦点） */
+function jumpToHeading(index: number): void {
+  const entry = outlineEntries.value[index];
+  if (!entry) return;
+  entry.el.scrollIntoView({ block: "start", behavior: "smooth" });
+  outlineActive.value = index;
+}
+
+/** 滚动时高亮当前可视区的标题 */
+function updateOutlineActive(): void {
+  const scroller = pageContentEl.value;
+  const entries = outlineEntries.value;
+  if (!scroller || entries.length === 0) {
+    outlineActive.value = 0;
+    return;
+  }
+  const top = scroller.getBoundingClientRect().top;
+  let active = 0;
+  entries.forEach((e, i) => {
+    if (e.el.getBoundingClientRect().top - top <= 16) active = i;
+  });
+  outlineActive.value = active;
+}
+
+function onPageScroll(): void {
+  updateOutlineActive();
+}
 
 /* ================= 标题 / 字数 ================= */
 
@@ -230,6 +304,7 @@ function loadContent(): void {
   updateEmptyClass();
   snapshotCurrent();
   refreshUi();
+  refreshOutline();
 }
 
 /** 输入防抖：停顿后同步数据 + 记一次快照 */
@@ -265,10 +340,12 @@ watch(
       console.info("[editor] reload note content, caret:", prevCaret);
     }
     el.innerHTML = incoming || "<p><br></p>";
+    codeTextToBrDom(el);
     if (prevCaret >= 0) restoreCaretByTextIndex(el, prevCaret);
     updateEmptyClass();
     snapshotCurrent();
     refreshUi();
+    refreshOutline();
   },
 );
 
@@ -395,6 +472,7 @@ function afterDomChange(): void {
   syncNoteFromDom();
   snapshotCurrent();
   refreshUi();
+  scheduleOutline();
 }
 
 /* ================= 编辑器键盘 / 剪贴板 ================= */
@@ -483,8 +561,7 @@ function onPaste(e: ClipboardEvent): void {
   const plain = e.clipboardData?.getData("text/plain") ?? "";
   const rawHtml = e.clipboardData?.getData("text/html") ?? "";
   // 只有从本笔记本内部复制（onCopy 写入的自定义标记）才带样式；外部一律纯文本
-  const internal =
-    e.clipboardData?.getData("text/notebook-internal") === "1";
+  const internal = e.clipboardData?.getData("text/notebook-internal") === "1";
   let inserted = false;
 
   // 光标在代码块内：一律按纯文本粘贴（保留换行/缩进，绝不插入块标签）
@@ -552,6 +629,7 @@ function onContentInput(): void {
     if (block) tidyBlock(block);
   }
   scheduleSync();
+  scheduleOutline();
   updateEmptyClass();
   markDirty();
 }
@@ -578,6 +656,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.clearTimeout(syncTimer);
   window.clearTimeout(selTimer);
+  window.clearTimeout(outlineTimer);
   flushSync();
   document.removeEventListener("selectionchange", onDocSelectionChange);
 });
@@ -587,13 +666,26 @@ onBeforeUnmount(() => {
   <div class="editor">
     <!-- 顶部格式工具条（同一行右侧：保存状态 + 时间） -->
     <div class="fmtline">
-      <NoteToolbar :ui="ui" :dirty="dirty" @exec="exec" />
+      <NoteToolbar
+        :ui="ui"
+        :dirty="dirty"
+        :outline-open="outlineOpen"
+        @exec="exec"
+        @toggle-outline="toggleOutline"
+      />
     </div>
 
-    <div class="editor__body">
+    <div class="editor__body" :class="{ 'is-outline-hidden': !outlineOpen }">
+      <div class="outline-slot" :class="{ 'is-hidden': !outlineOpen }">
+        <NoteOutline
+          :items="outlineItems"
+          :active-index="outlineActive"
+          @jump="jumpToHeading"
+        />
+      </div>
       <div class="page">
         <!-- 滚动区：内容只在 padding 内侧可见，超出即裁切 -->
-        <div class="page__content">
+        <div ref="pageContentEl" class="page__content" @scroll="onPageScroll">
           <input
             ref="titleInput"
             v-model="titleModel"
@@ -632,6 +724,13 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+/* 注册为长度类型：--page-max 才能在切换时平滑插值（不支持时退化为直接切换） */
+@property --page-max {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 1060px;
+}
+
 .editor {
   display: flex;
   flex-direction: column;
@@ -653,16 +752,54 @@ onBeforeUnmount(() => {
 /* editor__body 不再自身滚动：滚动被限制在 .page__content（padding 内侧），
    内容滚出 padding 内侧可视区即被裁剪隐藏；上下左右留白始终干净。 */
 .editor__body {
+  /* 显示目录树时：卡片宽度 = 视口 − 左右留白 − 目录树 − 间距。
+     关键：上限与“可用宽度”同步变化，动画全程线性，不会出现“先变宽再变窄”的速度反转 */
+  --page-max: calc(100vw - 260px);
+  /* 260 = 左右留白 20×2 + 目录树 200 + 间距 20 */
   flex: 1;
   min-height: 0;
+  display: flex;
+  align-items: stretch;
   overflow: hidden;
-  padding: 0 36px; /* 左右留白：纸张卡片不贴屏幕边 */
+  padding: 0 20px; /* 左右留白一致：目录树距左边框 = 卡片距右边框 */
+  transition: --page-max 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 目录树隐藏时：页面卡片恢复居中限宽 */
+.editor__body.is-outline-hidden {
+  --page-max: 1060px;
+}
+
+/* 目录树槽位：宽度收起动画驱动编辑器平滑位移 */
+.outline-slot {
+  flex: none;
+  width: 200px;
+  height: calc(100% - 28px);
+  margin: 14px 20px 14px 0;
+  overflow: hidden;
+  transition:
+    width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    margin-right 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.2s ease,
+    visibility 0s;
+}
+.outline-slot.is-hidden {
+  width: 0;
+  margin-right: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    margin-right 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.15s ease,
+    visibility 0s linear 0.3s;
 }
 
 .page {
-  height: calc(100% - 28px);
-  max-width: 1060px;
-  margin: 14px auto;
+  flex: 1;
+  min-width: 0;
+  margin: 14px auto; /* 左右 auto：无目录树时卡片水平居中 */
+  max-width: var(--page-max, 100vw); /* 由变量平滑过渡驱动宽度变化 */
   display: flex;
   flex-direction: column;
   padding: 30px 40px 0;
@@ -679,6 +816,7 @@ onBeforeUnmount(() => {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable; /* 宽度动画时不因滚动条出现/消失而跳动 */
 }
 
 /* 页脚：固定在页面底部 padding 条内（右下角），不随内容滚动 */

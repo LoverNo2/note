@@ -7,13 +7,8 @@ import StyleSettings from "./StyleSettings.vue";
 import { textFromHtml } from "../editor/html";
 import { formatRelativeTime, noteSummary } from "../utils/format";
 
-const {
-  sortedNotes,
-  currentNote,
-  createNote,
-  selectNote,
-  deleteNote,
-} = useNotes();
+const { sortedNotes, currentNote, createNote, selectNote, deleteNote } =
+  useNotes();
 const { toast } = useToast();
 
 /* ---------------- 下拉 ---------------- */
@@ -88,7 +83,6 @@ onMounted(() => document.addEventListener("pointerdown", onDocPointerdown));
 onBeforeUnmount(() =>
   document.removeEventListener("pointerdown", onDocPointerdown),
 );
-
 </script>
 
 <template>
@@ -198,7 +192,7 @@ onBeforeUnmount(() =>
   gap: 12px;
   height: 50px;
   flex: none;
-  padding: 0 16px;
+  padding: 0 20px;
   border-bottom: none;
   background: var(--bg-canvas);
   box-shadow: var(--neu-raise-sm);

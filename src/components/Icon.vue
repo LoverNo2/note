@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /** 工具栏图标名（与 ToolbarAction 语义一一对应） */
 export type IconName =
+  | "outline"
   | "paragraph"
   | "h1"
   | "h2"
@@ -33,8 +34,15 @@ defineProps<{ name: IconName }>();
     stroke-linejoin="round"
     aria-hidden="true"
   >
+    <!-- 目录树：层级缩进的三条线 -->
+    <template v-if="name === 'outline'">
+      <line x1="4.5" y1="7" x2="19.5" y2="7" />
+      <line x1="8" y1="12" x2="19.5" y2="12" />
+      <line x1="11.5" y1="17" x2="19.5" y2="17" />
+    </template>
+
     <!-- 正文段落：三行文本 -->
-    <template v-if="name === 'paragraph'">
+    <template v-else-if="name === 'paragraph'">
       <line x1="5.5" y1="8.6" x2="18.5" y2="8.6" />
       <line x1="5.5" y1="12.3" x2="18.5" y2="12.3" />
       <line x1="5.5" y1="16" x2="13.5" y2="16" />

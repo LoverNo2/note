@@ -24,8 +24,16 @@ export type ToolbarAction =
   | "undo"
   | "redo";
 
-const props = defineProps<{ ui: ToolbarUi; dirty?: boolean }>();
-const emit = defineEmits<{ (e: "exec", action: ToolbarAction): void }>();
+const props = defineProps<{
+  ui: ToolbarUi;
+  dirty?: boolean;
+  /** 目录树是否显示（按钮默认按下） */
+  outlineOpen: boolean;
+}>();
+const emit = defineEmits<{
+  (e: "exec", action: ToolbarAction): void;
+  (e: "toggle-outline"): void;
+}>();
 
 function isBlockActive(key: ToolbarAction): boolean {
   return props.ui.kind === key;
@@ -58,6 +66,18 @@ function iconOf(action: ToolbarAction): IconName {
 
 <template>
   <div class="fmtbar" role="toolbar" aria-label="文本格式" @mousedown.prevent>
+    <button
+      class="btn"
+      :class="{ active: props.outlineOpen }"
+      title="显示 / 隐藏目录树"
+      @mousedown.prevent
+      @click="emit('toggle-outline')"
+    >
+      <Icon name="outline" />
+    </button>
+
+    <span class="sep"></span>
+
     <button
       class="btn"
       :class="{ active: isBlockActive('paragraph') }"
@@ -217,7 +237,7 @@ function iconOf(action: ToolbarAction): IconName {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 6px 12px;
+  padding: 6px 20px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-canvas);
   overflow-x: auto;
