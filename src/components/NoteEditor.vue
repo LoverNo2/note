@@ -15,23 +15,28 @@ import type { BlockKind, InlineMark, ToolbarUi } from "../editor/blocks";
 import {
   caretTextIndex,
   codeExitOnArrowDown,
+  codeTextToBrDom,
   currentBlockKind,
   deleteFirstEmptyParagraph,
   editorHasContent,
   emptyToolbarUi,
   ensureStartParagraph,
+  flattenPreElement,
   focusEditorStart,
   getCaretRange,
   healStrayTopLevelText,
   handleEnterKey,
   handleTabKey,
+  insertCodeNewline,
   insertDivider,
   isInsideEditor,
   isMarkActive,
   pasteTextInto,
   paragraphsOnSelection,
+  resolveBlock,
   restoreCaretByTextIndex,
   setBlockType,
+  tidyBlock,
   toggleInlineMark,
 } from "../editor/blocks";
 import {
@@ -40,6 +45,7 @@ import {
   normalizeHtml,
   sanitizeHtml,
   textFromHtml,
+  trimLineEndSpaces,
 } from "../editor/html";
 import { useNotes } from "../composables/useNotes";
 import { useToast } from "../composables/useToast";
@@ -148,11 +154,39 @@ function normalizeEditorHtml(el: HTMLElement): string {
   return normalizeHtml(el.innerHTML);
 }
 
+/** 遍历整理所有块：代码块结构拍平、清外来样式、去行尾多余 br/空白
+ *  （行尾空白清理会避开光标所在位置，不影响正在输入的内容） */
+function tidyEditorDom(el: HTMLElement): void {
+  for (const child of Array.from(el.children)) {
+    const tag = child.tagName;
+    if (tag === "HR") continue;
+    if (tag === "PRE") {
+      // 编辑期不动代码块（重写文本会打乱光标）；仅在光标不在其中、
+      // 且浏览器塞进了块级元素时才拍平（历史脏数据由加载时清理）
+      const pre = child as HTMLElement;
+      const sel = window.getSelection();
+      const caretInside = !!sel?.anchorNode && pre.contains(sel.anchorNode);
+      if (!caretInside && pre.querySelector("p,div,span")) {
+        flattenPreElement(pre);
+      }
+      continue;
+    }
+    if (tag === "UL" || tag === "OL") {
+      for (const li of Array.from(child.querySelectorAll("li"))) {
+        tidyBlock(li as HTMLElement, true);
+      }
+      continue;
+    }
+    tidyBlock(child as HTMLElement, true);
+  }
+}
+
 function syncNoteFromDom(): void {
   const note = currentNote.value;
   const el = contentEl.value;
   if (!note || !el) return;
   if (note.id !== mountedNoteId) return; // 卸载期防止把旧 DOM 写进新笔记
+  tidyEditorDom(el); // 清理粘贴/合并留下的样式与行尾占位 br
   const html = normalizeEditorHtml(el);
   suppressContentWatch = true;
   if (note.content !== html) note.content = html;
@@ -182,8 +216,13 @@ function loadContent(): void {
       : normalizeHtml(legacyTextToHtml(raw));
   }
   if (!html) html = "<p><br></p>";
+  // 既有内容迁移：清掉行尾多余空白（只在加载时做，不影响实时输入）
+  html = trimLineEndSpaces(html);
+  if (!html) html = "<p><br></p>";
 
   el.innerHTML = html;
+  // 代码块内的换行在编辑期用 <br> 表示（光标行为才可靠），存储仍是换行符
+  codeTextToBrDom(el);
   suppressContentWatch = true;
   if (note.content !== html) note.content = html;
   suppressContentWatch = false;
@@ -404,6 +443,12 @@ function onKeydown(e: KeyboardEvent): void {
   if (e.key === "Enter") {
     // 输入法组合中按回车是确认候选词，交给浏览器，不做块拆分
     if (e.isComposing || e.keyCode === 229) return;
+    // 代码块内：自己插入换行（浏览器默认会生成多余的 <br>，导致空行与光标错位）
+    if (insertCodeNewline(el)) {
+      e.preventDefault();
+      afterDomChange();
+      return;
+    }
     if (e.shiftKey) return; // 保留浏览器行为插入 <br>
     if (import.meta.env?.DEV) {
       const idx = caretTextIndex(el);
@@ -471,6 +516,7 @@ function onPaste(e: ClipboardEvent): void {
 
   // 自愈：任何被浏览器顶到块外的游离文本收回到相邻块（尤其 <pre>）
   healStrayTopLevelText(el);
+  tidyEditorDom(el); // 去掉粘贴后残留在行尾的占位 br / 样式 span
 
   scheduleSync();
   refreshUi();
@@ -490,14 +536,21 @@ function onCopy(e: ClipboardEvent): void {
   const cleaned = sanitizeHtml(box.innerHTML);
   if (!cleaned) return;
 
-  e.clipboardData?.setData("text/html", cleaned);
-  e.clipboardData?.setData("text/plain", sel.toString());
+  e.clipboardData?.setData("text/html", cleaned.replace(/\u200b/g, ""));
+  e.clipboardData?.setData("text/plain", sel.toString().replace(/\u200b/g, ""));
   // 内部标记：粘贴回本笔记时据此保留样式；外部应用可忽略
   e.clipboardData?.setData("text/notebook-internal", "1");
   e.preventDefault();
 }
 
 function onContentInput(): void {
+  // 输入后立即整理当前块：清掉浏览器产生的 span[style] 样式残留，
+  // 并移除“已有内容却仍带占位 <br>”造成的行尾空行
+  const el = contentEl.value;
+  if (el) {
+    const block = resolveBlock(el);
+    if (block) tidyBlock(block);
+  }
   scheduleSync();
   updateEmptyClass();
   markDirty();

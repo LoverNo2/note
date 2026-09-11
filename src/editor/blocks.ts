@@ -156,8 +156,7 @@ export function placeCaretAtEndOf(container: Node): void {
   applyRange(range)
 }
 
-/** 在容器内按文本偏移放置光标；容器无文本（如空 <code>）时放在开头 */
-export function placeCaretInTextAt(container: Node, offset: number): void {
+/** 在容器内按文本偏移放置光标；容器无文本（如空 <code>）时放在开头 */export function placeCaretInTextAt(container: Node, offset: number): void {
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
   let remain = Math.max(0, offset)
   let n: Node | null = walker.nextNode()
@@ -615,6 +614,234 @@ export function setBlockType(editor: HTMLElement, kind: BlockKind): void {
   }
 }
 
+/* ---------------- 块内容整理（清理浏览器残留） ---------------- */
+
+/** 解包元素（保留其子内容） */
+function unwrapElement(el: Element): void {
+  const parent = el.parentNode
+  if (!parent) return
+  while (el.firstChild) parent.insertBefore(el.firstChild, el)
+  el.remove()
+}
+
+/** 清除外来内联样式（浏览器粘贴/跨块合并产生的 span[style]、font 等），
+ *  保留编辑器自身的强调标记（b/i/u/s/code） */
+export function stripForeignStylesIn(container: HTMLElement): boolean {
+  let changed = false
+  for (const el of Array.from(container.querySelectorAll('span,font'))) {
+    if (el.tagName === 'FONT') {
+      unwrapElement(el)
+      changed = true
+      continue
+    }
+    if (el.hasAttribute('style')) {
+      el.removeAttribute('style')
+      changed = true
+    }
+    if (el.attributes.length === 0) {
+      unwrapElement(el)
+      changed = true
+    }
+  }
+  return changed
+}
+
+/** 移除“有内容的块”末尾多余的 <br>（空块的占位 br 保留）。
+ *  行尾换行没有排版意义（换行请用 Enter 新建段落），一律清掉，
+ *  这样不会再出现“行末尾多出一空行”的困惑。 */
+export function trimTrailingBreaksIn(block: HTMLElement): boolean {
+  let changed = false
+  for (;;) {
+    const last = block.lastChild
+    if (
+      !last ||
+      last.nodeType !== Node.ELEMENT_NODE ||
+      (last as HTMLElement).tagName !== 'BR'
+    ) {
+      break
+    }
+    const others = Array.from(block.childNodes).filter((n) => n !== last)
+    const hasContent = others.some((n) =>
+      n.nodeType === Node.TEXT_NODE
+        ? (n.textContent ?? '').length > 0
+        : (n as HTMLElement).tagName !== 'BR',
+    )
+    if (!hasContent) break // 空块：保留占位 br
+    last.remove()
+    changed = true
+  }
+  return changed
+}
+
+/** node 之后（到块尾之间）是否已无有意义内容 */
+function isAtBlockEnd(block: HTMLElement, node: Node): boolean {
+  let cur: Node | null = node
+  while (cur && cur !== block) {
+    let s: Node | null = cur.nextSibling
+    while (
+      s &&
+      s.nodeType === Node.TEXT_NODE &&
+      !(s.textContent ?? '').length
+    ) {
+      s = s.nextSibling
+    }
+    if (s) return false
+    cur = cur.parentNode
+  }
+  return true
+}
+
+/** 去掉块尾文本末尾的空白字符（空格 / 制表符 / 不换行空格）。
+ *  protectCaret=true 时，若光标停在被删区间内则跳过，避免影响正在输入的内容 */
+export function trimTrailingSpacesIn(
+  block: HTMLElement,
+  protectCaret = false,
+): boolean {
+  const t = lastTextNodeOf(block)
+  if (!t) return false
+  if (!isAtBlockEnd(block, t)) return false
+  const text = t.textContent ?? ''
+  const trimmed = text.replace(/[ \t\u00a0]+$/, '')
+  if (trimmed === text) return false
+  if (protectCaret) {
+    const sel = getSelection()
+    if (sel && sel.anchorNode === t && sel.anchorOffset > trimmed.length) {
+      return false
+    }
+  }
+  if (trimmed === '') t.remove()
+  else t.textContent = trimmed
+  return true
+}
+
+/* ---------- 代码块结构规范化（浏览器会在 <pre> 里塞进 <p>/<span>/<br>） ---------- */
+
+const PRE_BLOCK_TAGS = new Set([
+  'P', 'DIV', 'LI', 'UL', 'OL',
+  'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
+  'SECTION', 'ARTICLE', 'FIGURE',
+])
+
+function preTextContent(pre: HTMLElement): string {
+  const parts: string[] = []
+  const walk = (node: Node): void => {
+    for (const child of Array.from(node.childNodes)) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        parts.push(child.textContent ?? '')
+        continue
+      }
+      if (child.nodeType !== Node.ELEMENT_NODE) continue
+      const el = child as HTMLElement
+      if (el.tagName === 'BR') {
+        parts.push('\n')
+        continue
+      }
+      if (PRE_BLOCK_TAGS.has(el.tagName)) {
+        const mark = parts.length
+        walk(el)
+        const inner = parts.slice(mark).join('')
+        parts.length = mark
+        const body = inner.replace(/\n+$/, '')
+        if (body.trim() === '' && !inner.includes('\n')) continue // 空块不产生空行
+        parts.push(body, '\n')
+        continue
+      }
+      walk(el) // span/b/i 等内联：直接取内容
+    }
+  }
+  walk(pre)
+  return parts.join('')
+}
+
+/** 编辑器 DOM 中代码块的行分隔用 <br> 表示（浏览器对“换行符结尾文本之后”的光标
+ *  处理不可靠，会把后续输入插进上一行）；存储时再折算回 \n。
+ *  <br> 之后放一个零宽空格作为光标锚点，用户输入才会落进新行。 */
+const CODE_ANCHOR = '\u200b'
+
+export function insertCodeNewline(editor: HTMLElement): boolean {
+  const block = resolveBlock(editor)
+  if (!block || block.tagName !== 'PRE') return false
+  const caret = getCaretRange(editor)
+  if (!caret) return false
+
+  caret.deleteContents()
+  const br = document.createElement('br')
+  caret.insertNode(br)
+  const anchor = document.createTextNode(CODE_ANCHOR)
+  br.after(anchor)
+
+  const after = document.createRange()
+  after.setStart(anchor, (anchor.textContent ?? '').length)
+  after.collapse(true)
+  applyRange(after)
+  return true
+}
+
+/** 把代码块内的换行符拆成 <br> 行（加载内容后调用，无光标参与，安全） */
+export function codeTextToBrDom(editor: HTMLElement): void {
+  for (const pre of Array.from(editor.querySelectorAll('pre'))) {
+    const code = pre.firstElementChild
+    if (!code || code.tagName !== 'CODE') continue
+    const text = code.textContent ?? ''
+    if (!text.includes('\n') && !text.includes(CODE_ANCHOR)) continue
+    const lines = text.split('\n')
+    code.replaceChildren()
+    lines.forEach((line, i) => {
+      if (i > 0) code.appendChild(document.createElement('br'))
+      if (line) code.appendChild(document.createTextNode(line))
+    })
+  }
+}
+
+/** 光标在块内的文本偏移（光标落在元素边界时按累计长度处理） */
+function textOffsetAtCaret(block: HTMLElement, caret: Range): number {
+  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT)
+  let acc = 0
+  let n: Node | null = walker.nextNode()
+  while (n) {
+    if (n === caret.startContainer) return acc + caret.startOffset
+    acc += (n.textContent ?? '').length
+    n = walker.nextNode()
+  }
+  return acc
+}
+
+/** 把 <pre> 规整为 <code> + 纯文本；返回是否改动 DOM */
+export function flattenPreElement(pre: HTMLElement): boolean {
+  const text = preTextContent(pre)
+  const code = pre.firstElementChild
+  if (code && code.tagName === 'CODE' && pre.children.length === 1) {
+    if ((code.textContent ?? '') !== text) {
+      // 需要重写文本节点：尽量把光标恢复到同一文本偏移
+      const sel = getSelection()
+      const local =
+        sel && sel.anchorNode && pre.contains(sel.anchorNode)
+          ? textOffsetAtCaret(pre, sel.getRangeAt(0))
+          : null
+      code.textContent = text
+      if (local !== null) placeCaretInTextAt(code, local)
+      return true
+    }
+    return false
+  }
+  const c = document.createElement('code')
+  c.textContent = text
+  pre.replaceChildren(c)
+  return true
+}
+
+/** 就地整理一个块：清外来样式 + 去尾部多余 br（+ 非光标块的行尾空白）；
+ *  返回是否改动 DOM */
+export function tidyBlock(
+  block: HTMLElement,
+  protectCaret = false,
+): boolean {
+  let changed = stripForeignStylesIn(block)
+  while (trimTrailingBreaksIn(block)) changed = true
+  if (trimTrailingSpacesIn(block, protectCaret)) changed = true
+  return changed
+}
+
 /* ---------------- 选中区域强制转正文 ---------------- */
 
 /** 剥除某区域内全部行内样式痕迹：解包加粗/斜体/下划线/删除线/行内代码，
@@ -832,19 +1059,11 @@ export function codeExitOnArrowDown(editor: HTMLElement): boolean {
   if (!block || block.tagName !== 'PRE') return false
   const caret = getCaretRange(editor)
   if (!caret) return false
-  const last = lastTextNodeOf(block)
-  // 光标可能在元素内部末尾边界（例如刚粘贴完停在 <code> 边界），也视为“末尾”
-  const sc = caret.startContainer
-  const elementEnd =
-    sc.nodeType === Node.ELEMENT_NODE &&
-    block.contains(sc) &&
-    caret.startOffset === (sc as HTMLElement).childNodes.length
-  const atEnd =
-    (last === null && isEmptyBlock(block)) ||
-    (last !== null &&
-      sc === last &&
-      caret.startOffset === (last.textContent ?? '').length) ||
-    elementEnd
+
+  // 末尾判定：光标之前的文本量已达块内文本总量。
+  // （浏览器会在块尾留下空文本节点，单纯比较“最后一个文本节点”会误判）
+  const total = (block.textContent ?? '').length
+  const atEnd = textOffsetAtCaret(block, caret) >= total
   if (!atEnd) return false
 
   let next = block.nextElementSibling as HTMLElement | null
@@ -1182,17 +1401,29 @@ export function pasteTextInto(editor: HTMLElement, text: string): void {
       if (range === null) return
     }
     range.deleteContents()
-    const node = document.createTextNode(clean)
-    range.insertNode(node)
-    selectCollapsedAfter(node)
+    const preLines = clean.split('\n')
+    const frag = document.createDocumentFragment()
+    preLines.forEach((line, i) => {
+      if (i > 0) frag.appendChild(document.createElement('br'))
+      if (line) frag.appendChild(document.createTextNode(line))
+    })
+    if (preLines[preLines.length - 1] === '') {
+      frag.appendChild(document.createTextNode(CODE_ANCHOR)) // 光标停在新行时用锚点承接输入
+    }
+    const lastNode = frag.lastChild
+    range.insertNode(frag)
+    if (lastNode) selectCollapsedAfter(lastNode)
     return
   }
 
-  const lines = clean.split('\n')
+  const lines = clean
+    .split('\n')
+    .map((line) => line.replace(/[ \t\u00a0]+$/, '')) // 外部粘贴：去掉行尾多余空白
   // 单行：直接插入当前位置
   if (lines.length <= 1) {
+    const only = lines[0] ?? ''
     caret.deleteContents()
-    const node = document.createTextNode(clean)
+    const node = document.createTextNode(only)
     caret.insertNode(node)
     selectCollapsedAfter(node)
     return

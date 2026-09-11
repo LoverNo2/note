@@ -39,9 +39,169 @@ function parseBody(html: string): HTMLElement {
   return doc.body
 }
 
+/** 解包元素（保留子内容） */
+function unwrapEl(el: Element): void {
+  const parent = el.parentNode
+  if (!parent) return
+  while (el.firstChild) parent.insertBefore(el.firstChild, el)
+  el.remove()
+}
+
+/** 在 pre 内算作“独立一行”的块级标签 */
+const PRE_BLOCK_TAGS = new Set([
+  'P',
+  'DIV',
+  'LI',
+  'UL',
+  'OL',
+  'H1',
+  'H2',
+  'H3',
+  'H4',
+  'H5',
+  'H6',
+  'SECTION',
+  'ARTICLE',
+  'FIGURE',
+])
+
+/** 把 pre 的子树拍平成文本：<br> → 换行，块级元素独占一行，内联元素直接取文本 */
+function preTextContent(pre: Element): string {
+  const parts: string[] = []
+  const walk = (node: Node): void => {
+    for (const child of Array.from(node.childNodes)) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        parts.push(child.textContent ?? '')
+        continue
+      }
+      if (child.nodeType !== Node.ELEMENT_NODE) continue
+      const el = child as Element
+      if (el.tagName === 'BR') {
+        parts.push('\n')
+        continue
+      }
+      if (PRE_BLOCK_TAGS.has(el.tagName)) {
+        const mark = parts.length
+        walk(el)
+        const inner = parts.slice(mark).join('')
+        parts.length = mark
+        const body = inner.replace(/\n+$/, '')
+        // 空块（浏览器在代码块里塞进的空 <p><span> 之类）不产生空行
+        if (body.trim() === '' && !inner.includes('\n')) continue
+        parts.push(body, '\n')
+        continue
+      }
+      walk(el)
+    }
+  }
+  walk(pre)
+  return parts.join('').replace(/\u200b/g, '')
+}
+
+/** 代码块结构规范化：只保留 <code> + 纯文本，块级嵌套拍平成行 */
+function flattenPre(pre: Element): void {
+  const text = preTextContent(pre)
+  const code = pre.querySelector(':scope > code')
+  if (code && pre.children.length === 1) {
+    if ((code.textContent ?? '') !== text) code.textContent = text
+    return
+  }
+  const c = document.createElement('code')
+  c.textContent = text
+  pre.replaceChildren(c)
+}
+
+/** 去掉浏览器产生的内联样式残留（span[style] / font），保留语义标签 */
+function stripForeignStyles(root: HTMLElement): void {
+  for (const el of Array.from(root.querySelectorAll('span,font'))) {
+    if (el.tagName === 'FONT') {
+      unwrapEl(el)
+      continue
+    }
+    el.removeAttribute('style')
+    if (el.attributes.length === 0) unwrapEl(el)
+  }
+}
+
+/** 移除“有内容的块”末尾多余的 <br>（空块的占位 br 保留） */
+function trimTrailingBreaks(el: Element): void {
+  for (;;) {
+    const last = el.lastChild
+    if (
+      !last ||
+      last.nodeType !== Node.ELEMENT_NODE ||
+      (last as Element).tagName !== 'BR'
+    ) {
+      break
+    }
+    const others = Array.from(el.childNodes).filter((n) => n !== last)
+    const hasContent = others.some((n) =>
+      n.nodeType === Node.TEXT_NODE
+        ? (n.textContent ?? '').length > 0
+        : (n as Element).tagName !== 'BR',
+    )
+    if (!hasContent) break
+    last.remove()
+  }
+}
+
+/** 循环移除块尾多余 br，直到稳定（幂等） */
+function tidyChildren(el: Element): void {
+  while (el.lastChild !== null) {
+    const before = el.lastChild
+    trimTrailingBreaks(el)
+    if (el.lastChild === before) break
+  }
+}
+
 /** 判断字符串更像 HTML（含标签）还是纯文本 */
 export function looksLikeHtml(text: string): boolean {
   return /<\s*[a-zA-Z!]/.test(text)
+}
+
+/**
+ * 清理“行尾多余空格”：软换行 <br> 之前、以及块末尾的文本都去掉尾部空白。
+ * 只用于加载既有内容 / 粘贴这类“非实时输入”场景，绝不在输入过程中调用，
+ * 以免删除光标前的字符导致光标错位。
+ */
+export function trimLineEndSpaces(html: string): string {
+  const body = parseBody(html)
+  const BLOCKS = 'p,h1,h2,h3,h4,h5,h6,li,div'
+  const nextMeaningful = (block: Element, node: Node): Node | null => {
+    let cur: Node | null = node
+    while (cur && cur !== block) {
+      let s: Node | null = cur.nextSibling
+      while (s && s.nodeType === Node.TEXT_NODE && !(s.textContent ?? '').length) {
+        s = s.nextSibling
+      }
+      if (s) return s
+      cur = cur.parentNode
+    }
+    return null
+  }
+  for (const block of Array.from(body.querySelectorAll(BLOCKS))) {
+    const texts: Text[] = []
+    const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT)
+    let n: Node | null = walker.nextNode()
+    while (n) {
+      texts.push(n as Text)
+      n = walker.nextNode()
+    }
+    for (const t of texts) {
+      const text = t.textContent ?? ''
+      const next = nextMeaningful(block, t)
+      const atLineEnd =
+        next === null ||
+        (next.nodeType === Node.ELEMENT_NODE &&
+          (next as Element).tagName === 'BR')
+      if (!atLineEnd) continue
+      const trimmed = text.replace(/[ \t\u00a0]+$/, '')
+      if (trimmed === text) continue
+      if (trimmed === '') t.remove()
+      else t.textContent = trimmed
+    }
+  }
+  return body.innerHTML
 }
 
 /** 旧版纯文本正文 → 段落 HTML（空行分段，单换行转 <br>） */
@@ -148,6 +308,32 @@ export function normalizeHtml(html: string): string {
   }
   if (!hasVisible) return ''
 
+  // 3.5) 清理浏览器输入/合并留下的残留：代码块结构拍平、span[style]/font、块尾多余 br
+  //      （幂等：清理后再次 normalize 结果不变）
+  for (const pre of Array.from(body.querySelectorAll('pre'))) {
+    flattenPre(pre)
+  }
+  // 编辑器在代码块里用作光标锚点的零宽空格不写入存储
+  {
+    const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT)
+    const texts: Text[] = []
+    let n: Node | null = walker.nextNode()
+    while (n) {
+      texts.push(n as Text)
+      n = walker.nextNode()
+    }
+    for (const t of texts) {
+      const v = t.textContent ?? ''
+      if (v.includes('\u200b')) t.textContent = v.replace(/\u200b/g, '')
+    }
+  }
+  stripForeignStyles(body)
+  for (const el of Array.from(
+    body.querySelectorAll('p,h1,h2,h3,h4,h5,h6,li,div'),
+  )) {
+    tidyChildren(el)
+  }
+
   // 4) 末尾空段规范化：末尾连续的空白 <p> 只保留一个（供光标停靠），
   //    其余移除；规则幂等，多次 normalize 结果一致。
   {
@@ -228,6 +414,7 @@ export function textFromHtml(html: string): string {
   walk(body)
   return parts
     .join('')
+    .replace(/\u200b/g, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 }
