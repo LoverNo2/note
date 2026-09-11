@@ -1222,47 +1222,6 @@ export function toggleInlineMark(editor: HTMLElement, mark: InlineMark): boolean
   return true
 }
 
-/* ---------------- 分割线 ---------------- */
-
-export function insertDivider(editor: HTMLElement): void {
-  const block = resolveBlock(editor)
-  if (!block) return
-  const caret = getCaretRange(editor)
-
-  // 列表内：放到整个最外层列表之后
-  let anchor: HTMLElement = block
-  if (block.tagName === 'LI') {
-    let cur: HTMLElement | null = block
-    let top: HTMLElement = block
-    while (cur && isListTag(cur.parentElement as HTMLElement | null)) {
-      top = cur.parentElement as HTMLElement
-      cur = top
-    }
-    anchor = top
-  }
-
-  // 块内有后文时先拆分（避免把后半内容吞掉）
-  let splitP: HTMLElement | null = null
-  if (caret && textAfterCaretInBlock(anchor, caret)) {
-    const rest = extractAfterCaret(anchor, caret)
-    splitP = newParagraph(rest)
-    anchor.after(splitP)
-  }
-
-  const hr = document.createElement('hr')
-  const target = splitP ?? anchor
-  const p = newParagraph()
-  if (splitP) {
-    target.before(hr)
-  } else {
-    target.after(hr, p)
-  }
-  if (splitP) {
-    splitP.after(p)
-  }
-  placeCaretAtStartOf(p)
-}
-
 /* ---------------- 回车拆块 ---------------- */
 
 /**

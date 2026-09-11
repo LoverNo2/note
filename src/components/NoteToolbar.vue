@@ -13,7 +13,6 @@ export type ToolbarAction =
   | "h4"
   | "h5"
   | "codeblock"
-  | "divider"
   | "bulletList"
   | "orderedList"
   | "bold"
@@ -143,15 +142,6 @@ function iconOf(action: ToolbarAction): IconName {
       @click="emit('exec', 'codeblock')"
     >
       <Icon :name="iconOf('codeblock')" />
-    </button>
-
-    <button
-      class="btn"
-      title="插入分割线"
-      @mousedown.prevent
-      @click="emit('exec', 'divider')"
-    >
-      <Icon :name="iconOf('divider')" />
     </button>
 
     <button

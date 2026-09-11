@@ -175,12 +175,14 @@ body,
     size: A4;
     margin: 14mm 16mm;
   }
-  /* 只保留正文；隐藏一切 UI 与标题输入框 */
+  /* 只保留正文；隐藏一切 UI、标题输入框与左侧目录树 */
   .appbar,
   .fmtline,
   .page__foot,
   .title,
   .toast-slot,
+  .outline-slot,
+  .outline,
   .welcome {
     display: none !important;
   }

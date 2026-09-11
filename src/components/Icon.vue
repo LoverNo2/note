@@ -9,7 +9,6 @@ export type IconName =
   | "h4"
   | "h5"
   | "codeblock"
-  | "divider"
   | "bulletList"
   | "orderedList"
   | "bold"
@@ -82,13 +81,6 @@ defineProps<{ name: IconName }>();
     >
       &#60;/&#62;
     </text>
-
-    <!-- 分割线 -->
-    <template v-else-if="name === 'divider'">
-      <line x1="3.8" y1="12" x2="9.2" y2="12" />
-      <circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none" />
-      <line x1="14.8" y1="12" x2="20.2" y2="12" />
-    </template>
 
     <!-- 无序列表：竖排圆点 -->
     <template v-else-if="name === 'bulletList'">

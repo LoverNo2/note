@@ -764,57 +764,55 @@ onBeforeUnmount(() => {
             </button>
           </div>
 
-          <!-- 仅正文：首行缩进 / 段间距 -->
-          <template v-if="activeKey === 'paragraph'">
-            <div class="f-row">
-              <span class="f-label">首行缩进</span>
-              <input
-                v-model.number="state[activeKey].textIndent"
-                class="range"
-                type="range"
-                min="0"
-                max="3"
-                step="0.05"
-                :style="{ '--pct': pct(0, 3, state[activeKey].textIndent) }"
-                @pointerdown="blurRangeOnDown"
-                @mouseup="blurRange"
-              />
-              <span class="f-val"
-                >{{ fmt(state[activeKey].textIndent) }}em</span
-              >
-              <button
-                class="f-reset"
-                :class="{ off: isSavedEqual(activeKey, 'textIndent') }"
-                title="恢复首行缩进默认"
-                @click="resetFieldToSaved(activeKey, 'textIndent')"
-              >
-                ↺
-              </button>
-            </div>
-            <div class="f-row">
-              <span class="f-label">段间距</span>
-              <input
-                v-model.number="state[activeKey].marginBottom"
-                class="range"
-                type="range"
-                min="0"
-                max="30"
-                step="1"
-                :style="{ '--pct': pct(0, 30, state[activeKey].marginBottom) }"
-                @pointerdown="blurRangeOnDown"
-                @mouseup="blurRange"
-              />
-              <span class="f-val">{{ state[activeKey].marginBottom }}px</span>
-              <button
-                class="f-reset"
-                :class="{ off: isSavedEqual(activeKey, 'marginBottom') }"
-                title="恢复段间距默认"
-                @click="resetFieldToSaved(activeKey, 'marginBottom')"
-              >
-                ↺
-              </button>
-            </div>
-          </template>
+          <!-- 首行缩进 / 段间距（正文与 H1-H5 标题都可调）
+               注意：不要用没有指令的 <template> 包裹，它会被渲染成原生 template
+               元素，内容不参与显示（这里直接用普通 div 平铺） -->
+          <div class="f-row">
+            <span class="f-label">首行缩进</span>
+            <input
+              v-model.number="state[activeKey].textIndent"
+              class="range"
+              type="range"
+              min="0"
+              max="3.5"
+              step="0.05"
+              :style="{ '--pct': pct(0, 3.5, state[activeKey].textIndent) }"
+              @pointerdown="blurRangeOnDown"
+              @mouseup="blurRange"
+            />
+            <span class="f-val">{{ fmt(state[activeKey].textIndent) }}em</span>
+            <button
+              class="f-reset"
+              :class="{ off: isSavedEqual(activeKey, 'textIndent') }"
+              title="恢复首行缩进默认"
+              @click="resetFieldToSaved(activeKey, 'textIndent')"
+            >
+              ↺
+            </button>
+          </div>
+          <div class="f-row">
+            <span class="f-label">段间距</span>
+            <input
+              v-model.number="state[activeKey].marginBottom"
+              class="range"
+              type="range"
+              min="0"
+              max="48"
+              step="1"
+              :style="{ '--pct': pct(0, 48, state[activeKey].marginBottom) }"
+              @pointerdown="blurRangeOnDown"
+              @mouseup="blurRange"
+            />
+            <span class="f-val">{{ state[activeKey].marginBottom }}px</span>
+            <button
+              class="f-reset"
+              :class="{ off: isSavedEqual(activeKey, 'marginBottom') }"
+              title="恢复段间距默认"
+              @click="resetFieldToSaved(activeKey, 'marginBottom')"
+            >
+              ↺
+            </button>
+          </div>
         </fieldset>
       </div>
     </transition>

@@ -29,7 +29,6 @@ import {
   handleEnterKey,
   handleTabKey,
   insertCodeNewline,
-  insertDivider,
   isInsideEditor,
   isMarkActive,
   pasteTextInto,
@@ -446,9 +445,6 @@ function exec(action: ToolbarAction): void {
     case "bulletList":
     case "orderedList":
       setBlockType(el, action as BlockKind);
-      break;
-    case "divider":
-      insertDivider(el);
       break;
     default:
       return;
