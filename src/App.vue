@@ -1,17 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted } from 'vue'
+import { onBeforeUnmount, onMounted } from 'vue'
 import AppBar from './components/AppBar.vue'
 import NoteEditor from './components/NoteEditor.vue'
 import { useNotes } from './composables/useNotes'
 import { useToast } from './composables/useToast'
 
 const { currentNote, createNote, loadFromProject, saveToProject } = useNotes()
-const { toasts, toast } = useToast()
-/** 只展示最新一条提示（右下角浮层卡片） */
-const latestToast = computed(() => {
-  const list = toasts.value
-  return list.length > 0 ? list[list.length - 1] : null
-})
+const { toast } = useToast()
 
 function onCreateFirst(): void {
   createNote()
@@ -111,18 +106,6 @@ onBeforeUnmount(() => {
         <p class="welcome__hint">快捷键 <span class="kbd">⌘</span> / <span class="kbd">Ctrl</span> + <span class="kbd">N</span></p>
       </section>
     </main>
-
-    <transition name="toastpop">
-      <div
-        v-if="latestToast"
-        :key="latestToast.id"
-        class="toast-card"
-        :class="`toast-card--${latestToast.type}`"
-      >
-        <span class="toast-card__dot"></span>
-        <span class="toast-card__text">{{ latestToast.text }}</span>
-      </div>
-    </transition>
   </div>
 </template>
 
@@ -189,54 +172,4 @@ onBeforeUnmount(() => {
   color: var(--text-mid);
 }
 
-/* ---------- 右下角提示浮层（新拟态卡片） ---------- */
-.toast-card {
-  position: fixed;
-  right: 22px;
-  bottom: 22px;
-  z-index: 80;
-  max-width: min(340px, calc(100vw - 44px));
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px 12px 13px;
-  background: var(--bg-canvas); /* 与页面基底同色，阴影塑造体积 */
-  border: none;
-  border-radius: 14px;
-  box-shadow: var(--shadow-pop); /* 与样式设置等浮层一致的凸起双影 */
-  font-size: 13px;
-  line-height: 1.4;
-  font-weight: 500;
-  color: var(--text-strong);
-}
-.toast-card__dot {
-  flex: none;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent, #5b7cfa);
-}
-.toast-card__text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.toast-card--success .toast-card__dot {
-  background: #1aa06d;
-}
-.toast-card--error .toast-card__dot {
-  background: #d4483f;
-}
-.toastpop-enter-active,
-.toastpop-leave-active {
-  transition:
-    opacity 0.2s ease,
-    transform 0.24s cubic-bezier(0.2, 0.8, 0.3, 1);
-}
-.toastpop-enter-from,
-.toastpop-leave-to {
-  opacity: 0;
-  transform: translateY(8px);
-}
 </style>

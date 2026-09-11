@@ -9,7 +9,12 @@ import { formatRelativeTime, noteSummary } from "../utils/format";
 
 const { sortedNotes, currentNote, createNote, selectNote, deleteNote } =
   useNotes();
-const { toast } = useToast();
+const { toasts, toast } = useToast();
+/** 只展示最新一条提示（显示在文章选择器右侧，纯文字） */
+const latestToast = computed(() => {
+  const list = toasts.value;
+  return list.length > 0 ? list[list.length - 1] : null;
+});
 
 /* ---------------- 下拉 ---------------- */
 const open = ref(false);
@@ -154,6 +159,17 @@ onBeforeUnmount(() =>
           </div>
         </transition>
       </div>
+
+      <!-- 操作提示：紧贴文章选择器右侧，仅文字 -->
+      <transition name="toastfade">
+        <span
+          v-if="latestToast"
+          :key="latestToast.id"
+          class="bar-toast"
+          :class="`bar-toast--${latestToast.type}`"
+          >{{ latestToast.text }}</span
+        >
+      </transition>
     </div>
 
     <!-- 右侧：导出 PDF · 样式设置（相邻排布，尺寸一致） -->
@@ -240,6 +256,52 @@ onBeforeUnmount(() =>
   align-items: center;
   gap: 10px;
   min-width: 0;
+}
+
+/* 操作提示：仅一行文字，无边框 / 无背景。
+   质感靠字号字重、状态色与极轻的淡入微移来实现 */
+.bar-toast {
+  min-width: 0;
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.012em;
+  line-height: 1.5;
+  color: var(--text-mid);
+  text-rendering: optimizeLegibility;
+  margin: 15px;
+}
+.bar-toast--info {
+  color: var(--text-mid);
+}
+.bar-toast--success {
+  color: #14875c;
+}
+.bar-toast--error {
+  color: #c73f3a;
+}
+
+/* 出现：淡入 + 轻微上移；消失：淡出 + 轻微上移，安静不打扰 */
+.toastfade-enter-active {
+  transition:
+    opacity 0.2s ease,
+    transform 0.24s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+.toastfade-leave-active {
+  transition:
+    opacity 0.16s ease,
+    transform 0.18s ease;
+}
+.toastfade-enter-from {
+  opacity: 0;
+  transform: translateY(3px);
+}
+.toastfade-leave-to {
+  opacity: 0;
+  transform: translateY(-2px);
 }
 .brand {
   font-size: 15px;

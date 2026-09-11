@@ -8,7 +8,7 @@ interface ToastItem {
 
 const state = reactive<{ toasts: ToastItem[] }>({ toasts: [] })
 let seq = 0
-const DURATION = 2600
+const DURATION = 1500
 
 export function useToast() {
   function toast(text: string, type: ToastItem['type'] = 'info'): void {
