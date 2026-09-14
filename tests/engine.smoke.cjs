@@ -104,16 +104,27 @@ console.log('A. 段落 ↔ 标题切换')
 }
 
 reset()
-console.log('B. 引用包裹与展开')
+console.log('B. 中文字距 / 英文间隔包裹')
 {
-  const el = editorWith('<p>引用文字</p>')
-  blocks.placeCaretAtEndOf(el.querySelector('p'))
-  blocks.setBlockType(el, 'blockquote')
-  assert.strictEqual(el.firstElementChild.tagName, 'BLOCKQUOTE')
-  blocks.placeCaretAtEndOf(el.querySelector('blockquote'))
-  blocks.setBlockType(el, 'paragraph')
-  assert.strictEqual(el.firstElementChild.tagName, 'P')
-  check('B1 段落→引用→正文', () => {})
+  const el = editorWith('<p>中文abc中文 (abc) abc,hello</p>')
+  blocks.wrapTypographySpans(el)
+  const p = el.querySelector('p')
+  const latin = Array.from(p.querySelectorAll('span.latin')).map((s) => ({
+    text: s.textContent,
+    cls: s.className,
+  }))
+  assert.deepStrictEqual(latin.map((x) => x.text), ['abc', 'abc)', 'abc,', 'hello'])
+  // 夹在中文之间：两侧都留间隔
+  assert.ok(latin[0].cls.includes('latin--gap-l'))
+  assert.ok(latin[0].cls.includes('latin--gap-r'))
+  // 与 ASCII 标点相连：视为一体，只在与空格/中文相邻的一侧留间隔
+  assert.strictEqual(latin[1].cls.trim(), 'latin latin--gap-r')
+  assert.strictEqual(latin[2].cls.trim(), 'latin latin--gap-l')
+  // 行尾、前接标点：两侧都没有可间隔的对象
+  assert.strictEqual(latin[3].cls.trim(), 'latin')
+  // 包裹不改变文本内容
+  assert.strictEqual(p.textContent, '中文abc中文 (abc) abc,hello')
+  check('B1 英文单词两侧留间隔，与标点相连视为一体', () => {})
 }
 
 reset()
@@ -124,7 +135,8 @@ console.log('C. 代码块往返')
   blocks.setBlockType(el, 'codeblock')
   const pre = el.firstElementChild
   assert.strictEqual(pre.tagName, 'PRE')
-  assert.strictEqual(pre.textContent, '第一行第二行')
+  // 代码块内的换行：编辑期用 <br> / 换行符表示，文本内容保留换行
+  assert.strictEqual(pre.textContent, '第一行\n第二行')
   blocks.placeCaretAtEndOf(pre)
   blocks.setBlockType(el, 'paragraph')
   assert.strictEqual(el.firstElementChild.tagName, 'P')
@@ -205,7 +217,7 @@ console.log('H. 行首 / 行尾回车语义')
   assert.ok(!el.children[1].textContent.trim())
   check('H1 行尾回车在下方追加空行', () => {})
 
-  // 行首回车：应在段落上方插入空行，且光标落在该空行内
+  // 行首回车：在段落上方让出空行，光标跟随原文字一起下移（仍在该行文字开头）
   const el2 = editorWith('<p>hello</p>')
   const tn2 = el2.querySelector('p').firstChild
   const r2 = document.createRange()
@@ -219,19 +231,30 @@ console.log('H. 行首 / 行尾回车语义')
   assert.ok(!el2.children[0].textContent.trim())
   assert.strictEqual(el2.children[1].textContent, 'hello')
   const caretBlock = blocks.resolveBlock(el2)
-  assert.ok(caretBlock && !caretBlock.textContent.trim())
-  check('H2 行首回车在上方插入空行并聚焦', () => {})
+  assert.strictEqual(caretBlock.tagName, 'P')
+  assert.strictEqual(caretBlock.textContent, 'hello') // 光标跟着原文字下移
+  check('H2 行首回车让出空行、光标跟随原行', () => {})
 }
 
 reset()
-console.log('G. 分割线插入')
+console.log('G. 选中多段合并为代码块')
 {
-  const el = editorWith('<p>前文</p><p>后文</p>')
-  const p0 = el.querySelector('p')
-  blocks.placeCaretAtEndOf(p0)
-  blocks.insertDivider(el)
-  assert.ok(Array.from(el.children).some((c) => c.tagName === 'HR'))
-  check('G1 段后插入分割线', () => {})
+  const el = editorWith('<p>甲</p><p>乙</p>')
+  const t1 = el.children[0].firstChild
+  const t2 = el.children[1].firstChild
+  const range = document.createRange()
+  range.setStart(t1, 0)
+  range.setEnd(t2, (t2.textContent ?? '').length)
+  const sel = window.getSelection()
+  sel.removeAllRanges()
+  sel.addRange(range)
+  blocks.setBlockType(el, 'codeblock')
+  assert.strictEqual(el.querySelectorAll('pre').length, 1)
+  const flat = (el.querySelector('pre').textContent ?? '')
+    .replace(/\u200b/g, '')
+    .replace(/\n/g, '')
+  assert.strictEqual(flat, '甲乙')
+  check('G1 选中多个段落合并为一个代码块', () => {})
 }
 
 console.log(`\n结果：通过 ${passed} 项，失败 ${failed} 项`)

@@ -13,7 +13,12 @@ import {
 } from "../composables/useNoteStyles";
 import { useToast } from "../composables/useToast";
 
-const { state, defaults } = useNoteStyles();
+const {
+  state,
+  defaults,
+  codeStyle,
+  codeStyles: CODE_BLOCK_STYLES,
+} = useNoteStyles();
 const { toast } = useToast();
 
 /** 四种块（固定顺序渲染） */
@@ -70,6 +75,19 @@ const open = ref(false);
 const rootEl = ref<HTMLElement | null>(null);
 /** 当前编辑的块（分段页签） */
 const activeKey = ref<TextBlockKey>("paragraph");
+
+/** 面板当前页签：块样式 或 代码块外观 */
+const panelTab = ref<"block" | "code">("block");
+
+function selectBlockTab(key: TextBlockKey): void {
+  panelTab.value = "block";
+  activeKey.value = key;
+}
+
+/** 代码块外观预览用的示例代码 */
+const demoCode = `// 每帧执行的核心函数
+double delta = (ticks - last) / 1000000.0;
+if (main_loop) main_loop->iteration(delta);`;
 
 /* ---------------- 单项目撤销（相对最近一次保存） ---------------- */
 
@@ -554,12 +572,21 @@ onBeforeUnmount(() => {
             v-for="key in BLOCK_KEYS"
             :key="key"
             class="ss__tab"
-            :class="{ active: key === activeKey }"
+            :class="{ active: panelTab === 'block' && key === activeKey }"
             role="tab"
-            :aria-selected="key === activeKey"
-            @click="activeKey = key"
+            :aria-selected="panelTab === 'block' && key === activeKey"
+            @click="selectBlockTab(key)"
           >
             {{ tabLabel(key) }}
+          </button>
+          <button
+            class="ss__tab"
+            :class="{ active: panelTab === 'code' }"
+            role="tab"
+            :aria-selected="panelTab === 'code'"
+            @click="panelTab = 'code'"
+          >
+            代码块
           </button>
         </nav>
 
@@ -572,7 +599,7 @@ onBeforeUnmount(() => {
           }}
         </p>
         <fieldset
-          v-if="activeKey"
+          v-if="panelTab === 'block'"
           class="ss__body"
           :disabled="lockedDefault || naming"
         >
@@ -813,7 +840,55 @@ onBeforeUnmount(() => {
               ↺
             </button>
           </div>
+          <!-- 英文间距：只作用于正文（英文单词与中文相邻一侧的空隙） -->
+          <div v-if="activeKey === 'paragraph'" class="f-row">
+            <span class="f-label">英文间距</span>
+            <input
+              v-model.number="state[activeKey].enGap"
+              class="range"
+              type="range"
+              min="0"
+              max="16"
+              step="0.5"
+              :style="{ '--pct': pct(0, 16, state[activeKey].enGap) }"
+              @pointerdown="blurRangeOnDown"
+              @mouseup="blurRange"
+            />
+            <span class="f-val">{{ fmt(state[activeKey].enGap) }}px</span>
+            <button
+              class="f-reset"
+              :class="{ off: isSavedEqual(activeKey, 'enGap') }"
+              title="恢复英文间距默认"
+              @click="resetFieldToSaved(activeKey, 'enGap')"
+            >
+              ↺
+            </button>
+          </div>
         </fieldset>
+
+        <!-- 代码块外观：5 套预设（只影响代码块，不影响正文） -->
+        <div v-else class="ss__body cb-grid">
+          <p class="cb-tip">选择代码块的显示外观，仅作用于代码块。</p>
+          <button
+            v-for="opt in CODE_BLOCK_STYLES"
+            :key="opt.key"
+            class="cb-opt"
+            :class="{ active: codeStyle === opt.key }"
+            @click="codeStyle = opt.key"
+          >
+            <span class="cb-opt__head">
+              <span class="cb-opt__name">{{ opt.name }}</span>
+              <span v-if="codeStyle === opt.key" class="cb-opt__badge">当前</span>
+            </span>
+            <span class="cb-opt__desc">{{ opt.desc }}</span>
+            <span
+              class="cb-opt__demo note-content"
+              :class="`cb-demo code-${opt.key}`"
+            >
+              <pre><code>{{ demoCode }}</code></pre>
+            </span>
+          </button>
+        </div>
       </div>
     </transition>
   </div>
@@ -1506,6 +1581,84 @@ onBeforeUnmount(() => {
   border: 0;
   margin: 0;
   min-inline-size: 0;
+}
+
+/* ---------- 代码块外观选择 ---------- */
+.cb-grid {
+  gap: 10px;
+}
+.cb-tip {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-mid);
+}
+.cb-opt {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 11px 13px 12px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--bg-canvas);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: var(--neu-raise-sm);
+  transition:
+    box-shadow 0.22s ease,
+    background-color 0.22s ease;
+}
+.cb-opt:hover:not(:disabled):not(.active) {
+  background: rgba(255, 255, 255, 0.35);
+}
+.cb-opt.active {
+  box-shadow: var(--neu-sink-sm);
+}
+.cb-opt:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.cb-opt__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cb-opt__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+.cb-opt.active .cb-opt__name {
+  color: var(--accent);
+}
+.cb-opt__badge {
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.cb-opt__desc {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-mid);
+}
+.cb-opt__demo {
+  display: block;
+  pointer-events: none;
+}
+.cb-opt .cb-opt__demo.cb-demo {
+  min-height: 0;
+  padding: 0;
+  outline: none;
+}
+.cb-opt__demo pre {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
 }
 .ss__body:disabled {
   opacity: 0.55;

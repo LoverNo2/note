@@ -392,6 +392,7 @@ textarea,
   font-style: var(--p-italic, normal);
   text-decoration-line: var(--p-dec, none);
   --cjk-ls: var(--p-ls, 0.005em); /* 中文专用字距 */
+  --en-gap: var(--p-en-gap, 0px); /* 英文间距：只给正文段落（标题等其它格式不继承） */
   text-align: var(--p-align, left);
   text-indent: var(--p-indent, 0em);
   margin-bottom: var(--p-mb, 6px);
@@ -466,6 +467,14 @@ textarea,
 .note-content .cjk {
   letter-spacing: var(--cjk-ls, 0em);
 }
+/* 英文单词间隔：只作用于正文段落与列表项内容
+   （只在 --en-gap 有定义的块里生效：标题、行内代码、代码块不受影响） */
+.note-content .latin--gap-l {
+  margin-left: var(--en-gap, 0px);
+}
+.note-content .latin--gap-r {
+  margin-right: var(--en-gap, 0px);
+}
 
 .note-content > h1:first-child,
 .note-content > h2:first-child,
@@ -475,7 +484,7 @@ textarea,
   margin-top: 0.3em;
 }
 
-/* 代码块 */
+/* 代码块：基础排版（外观由 .code-* 预设类决定，见下方“代码块外观预设”） */
 .note-content pre {
   margin: 0.7em 0;
   padding: 14px 16px;
@@ -488,6 +497,51 @@ textarea,
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--text-strong);
+}
+
+/* ---------- 代码块外观预设（样式配置窗口「代码块」页签） ---------- */
+/* 经典：浅灰底 + 1px 细边框 */
+.note-content.code-now pre {
+  background: #f7f7f5;
+  border: 1px solid var(--border);
+}
+/* 内凹：去边框，内侧阴影压入纸面 */
+.note-content.code-a pre {
+  padding: 16px 18px;
+  background: #f6f6f2;
+  border: 0;
+  border-radius: 13px;
+  box-shadow:
+    inset 2px 2px 6px rgba(120, 115, 100, 0.18),
+    inset -2px -2px 6px rgba(255, 255, 255, 0.95);
+}
+/* 强调条：极浅底 + 左侧竖条 + 右侧大圆角 */
+.note-content.code-b pre {
+  padding: 16px 18px 16px 20px;
+  background: #f8f8f5;
+  border: 0;
+  border-left: 3px solid var(--accent);
+  border-radius: 4px 12px 12px 4px;
+}
+/* 深色终端 */
+.note-content.code-c pre {
+  padding: 16px 18px;
+  background: #21252c;
+  border: 0;
+  border-radius: 12px;
+  color: #e8e9ec;
+  box-shadow: 0 6px 16px rgba(40, 44, 52, 0.28);
+}
+.note-content.code-c pre code {
+  color: inherit;
+}
+/* 细线稿：透明底 + 细边框 */
+.note-content.code-d pre {
+  padding: 16px 18px;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: none;
 }
 .note-content pre code {
   font-family: inherit;
@@ -541,6 +595,7 @@ textarea,
   font-style: var(--p-italic, normal);
   text-decoration-line: var(--p-dec, none);
   --cjk-ls: var(--p-ls, 0.005em); /* 中文专用字距 */
+  --en-gap: var(--p-en-gap, 0px); /* 列表项承载正文内容，与正文同样生效 */
   text-align: var(--p-align, left);
   margin: 0 0 var(--p-mb, 6px);
   padding-left: 0.2em;
@@ -618,3 +673,21 @@ textarea,
     opacity 0.2s ease;
 }
 
+/* ============================================================
+   打印：代码块外观降级（省墨、边界清晰）
+   ============================================================ */
+@media print {
+  /* 深色终端 → 浅色 */
+  .note-content.code-c pre {
+    background: #f7f7f5;
+    border: 1px solid var(--border);
+    box-shadow: none;
+    color: var(--text-strong);
+  }
+  /* 内凹 → 细边框代替阴影，纸面更清楚 */
+  .note-content.code-a pre {
+    background: #f7f7f5;
+    border: 1px solid var(--border);
+    box-shadow: none;
+  }
+}

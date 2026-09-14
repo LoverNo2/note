@@ -14,6 +14,7 @@ import NoteOutline from "./NoteOutline.vue";
 import { useNoteStyles } from "../composables/useNoteStyles";
 import type { BlockKind, InlineMark, ToolbarUi } from "../editor/blocks";
 import {
+  caretAnchor,
   caretTextIndex,
   codeExitOnArrowDown,
   codeTextToBrDom,
@@ -34,12 +35,13 @@ import {
   pasteTextInto,
   paragraphsOnSelection,
   resolveBlock,
-  restoreCaretByTextIndex,
+  restoreCaretAnchor,
+  type CaretAnchor,
   setBlockType,
   tidyBlock,
   toggleInlineMark,
-  unwrapCjkSpans,
-  wrapCjkSpans,
+  unwrapTypographySpans,
+  wrapTypographySpans,
 } from "../editor/blocks";
 import {
   legacyTextToHtml,
@@ -55,7 +57,7 @@ import { useToast } from "../composables/useToast";
 const { currentNote, dirty, markDirty, markEdited } = useNotes();
 const { toast } = useToast();
 /** 正文与标题的可视化样式（CSS 变量实时注入 .note-content） */
-const { cssVars } = useNoteStyles();
+const { cssVars, codeStyleClass } = useNoteStyles();
 
 const titleInput = ref<HTMLInputElement | null>(null);
 const contentEl = ref<HTMLDivElement | null>(null);
@@ -171,7 +173,8 @@ function onTitleEnter(): void {
 
 interface HistItem {
   html: string;
-  caret: number;
+  /** 光标锚点（块序号 + 块内偏移），null 表示快照时无法定位 */
+  caret: CaretAnchor | null;
 }
 
 const hist = reactive<{ stack: HistItem[]; index: number }>({
@@ -186,7 +189,7 @@ function snapshotCurrent(): void {
   const html = el.innerHTML;
   if (html === lastSnapshotHtml && hist.index >= 0) return;
   hist.stack = hist.stack.slice(0, hist.index + 1);
-  hist.stack.push({ html, caret: caretTextIndex(el) });
+  hist.stack.push({ html, caret: caretAnchor(el) });
   if (hist.stack.length > 120) hist.stack.shift();
   hist.index = hist.stack.length - 1;
   lastSnapshotHtml = html;
@@ -198,7 +201,7 @@ function restoreHtml(item: HistItem): void {
   if (!el) return;
   el.innerHTML = item.html;
   lastSnapshotHtml = item.html;
-  restoreCaretByTextIndex(el, item.caret);
+  if (item.caret) restoreCaretAnchor(el, item.caret);
 }
 
 function doUndo(): void {
@@ -278,9 +281,9 @@ function syncNoteFromDom(): void {
   // 重排中文包裹（只影响渲染层字距，不改变文本），并保持光标位置。
   // 输入法组合期间不动 DOM，避免打断候选词。
   if (!composing) {
-    const caret = caretTextIndex(el);
-    wrapCjkSpans(el);
-    if (caret >= 0) restoreCaretByTextIndex(el, caret);
+    const caret = caretAnchor(el);
+    wrapTypographySpans(el);
+    if (caret) restoreCaretAnchor(el, caret);
   }
   markEdited();
   updateEmptyClass();
@@ -314,7 +317,7 @@ function loadContent(): void {
   el.innerHTML = html;
   // 代码块内的换行在编辑期用 <br> 表示（光标行为才可靠），存储仍是换行符
   codeTextToBrDom(el);
-  wrapCjkSpans(el); // 中文片段包裹（字距只作用于此）
+  wrapTypographySpans(el); // 中文片段字距 + 英文单词间隔（只作用于渲染标记）
   suppressContentWatch = true;
   if (note.content !== html) note.content = html;
   suppressContentWatch = false;
@@ -353,13 +356,13 @@ watch(
     const incoming = normalizeHtml(value || "");
     if (incoming === normalizeEditorHtml(el)) return;
     // 重载前记住光标位置，重载后尽量恢复（避免光标跳回文档开头）
-    const prevCaret = caretTextIndex(el);
+    const prevCaret = caretAnchor(el);
     if (import.meta.env?.DEV) {
       console.info("[editor] reload note content, caret:", prevCaret);
     }
     el.innerHTML = incoming || "<p><br></p>";
     codeTextToBrDom(el);
-    if (prevCaret >= 0) restoreCaretByTextIndex(el, prevCaret);
+    if (prevCaret) restoreCaretAnchor(el, prevCaret);
     updateEmptyClass();
     snapshotCurrent();
     refreshUi();
@@ -625,7 +628,7 @@ function onCopy(e: ClipboardEvent): void {
   const frag = sel.getRangeAt(0).cloneContents();
   const box = document.createElement("div");
   box.appendChild(frag);
-  unwrapCjkSpans(box); // 复制出去的内容不带中文包裹标记
+  unwrapTypographySpans(box); // 复制出去的内容不带排版包裹标记
   const cleaned = sanitizeHtml(box.innerHTML);
   if (!cleaned) return;
 
@@ -716,6 +719,7 @@ onBeforeUnmount(() => {
           <div
             ref="contentEl"
             class="note-content"
+            :class="codeStyleClass"
             contenteditable="true"
             spellcheck="false"
             role="textbox"

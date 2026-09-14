@@ -17,7 +17,8 @@ function pick(kind: "latin" | "cjk", name: string): void {
 function onDocPointerDown(e: PointerEvent): void {
   if (!open.value) return;
   const el = rootEl.value;
-  if (el && e.target instanceof Node && !el.contains(e.target)) open.value = false;
+  if (el && e.target instanceof Node && !el.contains(e.target))
+    open.value = false;
 }
 
 function onKey(e: KeyboardEvent): void {
@@ -42,7 +43,7 @@ onBeforeUnmount(() => {
       title="切换字体（英文与中文可分别设置）"
       @click="toggle"
     >
-      字体
+      font
     </button>
 
     <transition name="fspop">
@@ -89,7 +90,7 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
+  width: 36px;
   height: 34px;
   border: none;
   border-radius: 10px;

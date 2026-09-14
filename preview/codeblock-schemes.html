@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>代码块样式方案对比</title>
+    <style>
+      @font-face {
+        font-family: 'Menlo';
+        src: url('../asset/fonts/Menlo/Menlo-Regular-1.ttf') format('truetype');
+        font-weight: 400;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: 'Menlo';
+        src: url('../asset/fonts/Menlo/Menlo-Bold-2.ttf') format('truetype');
+        font-weight: 700;
+        font-display: swap;
+      }
+      :root {
+        --canvas: #e7e8ea;
+        --paper: #fffef8;
+        --ink: #37352f;
+        --ink-mid: #6f6d67;
+        --accent: #2563eb;
+        --mono: 'Menlo', ui-monospace, 'SF Mono', Consolas, monospace;
+        --cjk: 'PingFang SC', -apple-system, 'Segoe UI', sans-serif;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 40px 44px 80px;
+        background: var(--canvas);
+        color: var(--ink);
+        font-family: var(--cjk);
+        -webkit-font-smoothing: antialiased;
+      }
+      h1 {
+        margin: 0 0 6px;
+        font-size: 23px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+      .lead {
+        margin: 0 0 30px;
+        color: var(--ink-mid);
+        font-size: 14px;
+        line-height: 1.7;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(430px, 1fr));
+        gap: 26px;
+      }
+      .card {
+        background: var(--paper);
+        border-radius: 20px;
+        padding: 22px 26px 26px;
+        box-shadow:
+          16px 16px 32px rgba(95, 100, 110, 0.3),
+          -12px -12px 26px rgba(255, 255, 255, 0.9);
+      }
+      .card__head {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        margin-bottom: 4px;
+      }
+      .card__name { font-size: 16px; font-weight: 700; }
+      .tag {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        padding: 2px 8px;
+        border-radius: 999px;
+        color: var(--accent);
+        background: rgba(37, 99, 235, 0.1);
+      }
+      .tag--now { color: #8a6d1f; background: rgba(180, 140, 30, 0.14); }
+      .card__desc {
+        margin: 0 0 14px;
+        font-size: 12.5px;
+        line-height: 1.65;
+        color: var(--ink-mid);
+      }
+      pre {
+        margin: 0;
+        font-family: var(--mono);
+        font-size: 13px;
+        line-height: 1.7;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .cmt { color: #96938c; font-style: italic; }
+
+      /* ============ 当前样式（对照） ============ */
+      .s-now pre {
+        padding: 14px 16px;
+        background: #f7f7f5;
+        border: 1px solid #d3d5da;
+        border-radius: 8px;
+        color: var(--ink);
+      }
+
+      /* ============ A · 内凹卡面 ============ */
+      .s-a pre {
+        padding: 16px 18px;
+        background: #f6f6f2;
+        border-radius: 13px;
+        color: var(--ink);
+        box-shadow:
+          inset 2px 2px 6px rgba(120, 115, 100, 0.18),
+          inset -2px -2px 6px rgba(255, 255, 255, 0.95);
+      }
+
+      /* ============ B · 左侧强调条 ============ */
+      .s-b pre {
+        padding: 16px 18px 16px 20px;
+        background: #f8f8f5;
+        border: 0;
+        border-left: 3px solid var(--accent);
+        border-radius: 4px 12px 12px 4px;
+        color: var(--ink);
+      }
+
+      /* ============ C · 深色终端 ============ */
+      .s-c pre {
+        padding: 16px 18px;
+        background: #21252c;
+        border-radius: 12px;
+        color: #e8e9ec;
+        box-shadow: 0 6px 16px rgba(40, 44, 52, 0.28);
+      }
+      .s-c .cmt { color: #8b919c; }
+
+      /* ============ D · 细线稿 ============ */
+      .s-d pre {
+        padding: 16px 18px;
+        background: transparent;
+        border: 1px solid #c9c6bb;
+        border-radius: 10px;
+        color: var(--ink);
+      }
+
+      .foot {
+        margin-top: 30px;
+        font-size: 12.5px;
+        color: var(--ink-mid);
+        line-height: 1.75;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>代码块样式方案对比</h1>
+    <p class="lead">
+      同一段代码（含中文注释与中英混排）在 5 种代码块样式下的效果。当前代码块样式放在最前面作为对照。
+    </p>
+
+    <div class="grid">
+      <div class="card s-now">
+        <div class="card__head">
+          <span class="card__name">当前样式</span><span class="tag tag--now">对照</span>
+        </div>
+        <p class="card__desc">浅灰底 + 1px 边框 + 8px 圆角：中规中矩，但与页面整体的新拟态（柔和光影）语言不一致。</p>
+        <pre><span class="cmt">// Main::iteration —— 每帧执行的核心函数</span>
+bool Main::iteration() {
+    uint64_t ticks = OS::get_singleton()->get_ticks_usec();
+    <span class="cmt">// 计算帧间隔（毫秒）</span>
+    double delta = (ticks - last_ticks) / 1000000.0;
+    if (main_loop) {
+        main_loop->iteration(delta);   <span class="cmt">// 进入主循环</span>
+    }
+    return exit;
+}</pre>
+      </div>
+
+      <div class="card s-a">
+        <div class="card__head">
+          <span class="card__name">方案 A · 内凹卡面</span><span class="tag">推荐</span>
+        </div>
+        <p class="card__desc">
+          去掉边框，用内侧柔和阴影把代码“压”进纸面，13px 圆角。与工具栏、目录树同一套新拟态语言，整体最统一。
+        </p>
+        <pre><span class="cmt">// Main::iteration —— 每帧执行的核心函数</span>
+bool Main::iteration() {
+    uint64_t ticks = OS::get_singleton()->get_ticks_usec();
+    <span class="cmt">// 计算帧间隔（毫秒）</span>
+    double delta = (ticks - last_ticks) / 1000000.0;
+    if (main_loop) {
+        main_loop->iteration(delta);   <span class="cmt">// 进入主循环</span>
+    }
+    return exit;
+}</pre>
+      </div>
+
+      <div class="card s-b">
+        <div class="card__head"><span class="card__name">方案 B · 左侧强调条</span></div>
+        <p class="card__desc">
+          极浅底色 + 左侧 3px 蓝色竖条，右侧大圆角。现代技术文档常见做法，视线容易定位代码边界，主次分明。
+        </p>
+        <pre><span class="cmt">// Main::iteration —— 每帧执行的核心函数</span>
+bool Main::iteration() {
+    uint64_t ticks = OS::get_singleton()->get_ticks_usec();
+    <span class="cmt">// 计算帧间隔（毫秒）</span>
+    double delta = (ticks - last_ticks) / 1000000.0;
+    if (main_loop) {
+        main_loop->iteration(delta);   <span class="cmt">// 进入主循环</span>
+    }
+    return exit;
+}</pre>
+      </div>
+
+      <div class="card s-c">
+        <div class="card__head"><span class="card__name">方案 C · 深色终端</span></div>
+        <p class="card__desc">
+          深色底 + 浅色等宽字，代码最醒目、可读性最好。缺点是白纸页面上一块深色偏重，打印时也会很费墨。
+        </p>
+        <pre><span class="cmt">// Main::iteration —— 每帧执行的核心函数</span>
+bool Main::iteration() {
+    uint64_t ticks = OS::get_singleton()->get_ticks_usec();
+    <span class="cmt">// 计算帧间隔（毫秒）</span>
+    double delta = (ticks - last_ticks) / 1000000.0;
+    if (main_loop) {
+        main_loop->iteration(delta);   <span class="cmt">// 进入主循环</span>
+    }
+    return exit;
+}</pre>
+      </div>
+
+      <div class="card s-d">
+        <div class="card__head"><span class="card__name">方案 D · 细线稿</span><span class="tag">最克制</span></div>
+        <p class="card__desc">
+          透明底 + 1px 细边框，几乎不加装饰。正文与代码区隔清晰，打印友好、几乎不改变纸面观感。
+        </p>
+        <pre><span class="cmt">// Main::iteration —— 每帧执行的核心函数</span>
+bool Main::iteration() {
+    uint64_t ticks = OS::get_singleton()->get_ticks_usec();
+    <span class="cmt">// 计算帧间隔（毫秒）</span>
+    double delta = (ticks - last_ticks) / 1000000.0;
+    if (main_loop) {
+        main_loop->iteration(delta);   <span class="cmt">// 进入主循环</span>
+    }
+    return exit;
+}</pre>
+      </div>
+    </div>
+
+    <p class="foot">
+      说明：以上只改外观（背景 / 边框 / 圆角 / 阴影），代码块的排版（Menlo 13px、行高 1.7、换行规则）保持一致。<br />
+      另外可选项：A 加一条 2px 的强调色顶线；B 的竖条换成中性灰；C 可只在屏幕上深色、打印时自动转浅色。
+    </p>
+  </body>
+</html>

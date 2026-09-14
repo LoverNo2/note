@@ -107,6 +107,42 @@ export function isMarkActive(editor: HTMLElement, mark: InlineMark): boolean {
 }
 
 /** 光标按文本字符计数定位（供撤销恢复近似光标） */
+/** 光标锚点：顶层块序号 + 块内文本偏移（空块也能精确定位，避免落到文档末尾） */
+export interface CaretAnchor {
+  block: number
+  offset: number
+}
+
+export function caretAnchor(editor: HTMLElement): CaretAnchor | null {
+  const sel = getSelection()
+  if (!sel || !sel.anchorNode || !editor.contains(sel.anchorNode)) return null
+  let top: Node | null = sel.anchorNode
+  while (top && top.parentNode !== editor) top = top.parentNode
+  if (!top || top.nodeType !== Node.ELEMENT_NODE) return null
+  const block = top as HTMLElement
+  const blockIndex = Array.from(editor.children).indexOf(block)
+  if (blockIndex < 0) return null
+  let offset = 0
+  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT)
+  let n: Node | null = walker.nextNode()
+  while (n) {
+    if (n === sel.anchorNode) {
+      offset += sel.anchorOffset
+      return { block: blockIndex, offset }
+    }
+    offset += (n.textContent ?? '').length
+    n = walker.nextNode()
+  }
+  // 光标落在块本身或空块（块内没有文本节点）：偏移记为 0
+  return { block: blockIndex, offset: 0 }
+}
+
+export function restoreCaretAnchor(editor: HTMLElement, anchor: CaretAnchor): void {
+  const block = editor.children[anchor.block] as HTMLElement | undefined
+  if (!block) return
+  placeCaretInTextAt(block, anchor.offset)
+}
+
 export function caretTextIndex(editor: HTMLElement): number {
   const sel = getSelection()
   if (!sel || !sel.anchorNode || !editor.contains(sel.anchorNode)) return -1
@@ -230,41 +266,30 @@ function extractAfterCaret(block: HTMLElement, caret: Range): DocumentFragment {
   return range.extractContents()
 }
 
+/** 光标之后（块内）是否有可见文本。
+ *  用 Range 取文本，光标落在元素容器（而非文本节点）上时判定同样准确 */
 function textAfterCaretInBlock(block: HTMLElement, caret: Range): boolean {
-  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT)
-  let n: Node | null = walker.nextNode()
-  while (n) {
-    if (n === caret.startContainer) {
-      const offset = caret.startOffset
-      const after = (n.textContent ?? '').slice(offset)
-      if (after.trim()) return true
-      n = walker.nextNode()
-      while (n) {
-        if ((n.textContent ?? '').trim()) return true
-        n = walker.nextNode()
-      }
-      return false
-    }
-    n = walker.nextNode()
+  const r = document.createRange()
+  try {
+    r.setStart(caret.startContainer, caret.startOffset)
+    r.setEnd(block, block.childNodes.length)
+  } catch {
+    return false
   }
-  return false
+  return r.toString().trim().length > 0
 }
 
+/** 光标之前（块内）是否有可见文本。
+ *  用 Range 取文本，光标落在元素容器（而非文本节点）上时判定同样准确 */
 function textBeforeCaretInBlock(block: HTMLElement, caret: Range): boolean {
-  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT)
-  let n: Node | null = walker.nextNode()
-  let anyBefore = false
-  while (n) {
-    const text = n.textContent ?? ''
-    if (n === caret.startContainer) {
-      const before = text.slice(0, caret.startOffset)
-      if (before.trim()) return true
-      return anyBefore
-    }
-    if (text.trim()) anyBefore = true
-    n = walker.nextNode()
+  const r = document.createRange()
+  try {
+    r.setStart(block, 0)
+    r.setEnd(caret.startContainer, caret.startOffset)
+  } catch {
+    return false
   }
-  return anyBefore
+  return r.toString().trim().length > 0
 }
 
 function newParagraph(content?: DocumentFragment): HTMLElement {
@@ -836,6 +861,9 @@ export function tidyBlock(
   block: HTMLElement,
   protectCaret = false,
 ): boolean {
+  // 代码块不参与正文式清理：块内的 <br> 就是换行（末尾的 <br> 是一个空行），
+  // 行尾空格也可能是刻意保留的，清理会破坏换行结构与光标位置
+  if (block.tagName === 'PRE') return false
   let changed = stripForeignStylesIn(block)
   while (trimTrailingBreaksIn(block)) changed = true
   if (trimTrailingSpacesIn(block, protectCaret)) changed = true
@@ -1222,15 +1250,120 @@ export function toggleInlineMark(editor: HTMLElement, mark: InlineMark): boolean
   return true
 }
 
-/* ---------------- 中文专用字距（渲染层包裹） ---------------- */
+/* ---------------- 中文专用字距 / 英文间距（渲染层包裹） ---------------- */
 
-/** 中文字符：CJK 统一表意文字 / 扩展 A / 兼容表意文字 */
-const CJK_CHAR = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]+/g
 const CJK_CLASS = 'cjk'
+const LATIN_CLASS = 'latin'
 
-/** 去掉编辑器内的中文包裹标记（保持文本不变，仅还原结构） */
-export function unwrapCjkSpans(root: HTMLElement): void {
-  for (const el of Array.from(root.querySelectorAll(`span.${CJK_CLASS}`))) {
+/** 文本分片：中文片段，或英文单词（词内允许 . ' - _ ，并吞掉紧跟其后的标点） */
+const TOKEN_RE =
+  /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]+|[A-Za-z0-9]+(?:[.'’\-_][A-Za-z0-9]+)*/g
+/** 紧跟英文单词的 ASCII 标点/符号：并入同一个包裹，与字母视为一体
+ *  （中文标点不并：全角标点自带空隙，并入反而会让句号后多出间隔） */
+const TRAILING_PUNCT = /^[.,;:!?%'")\]}>/\\|+*&^$#@~`\-]+/
+
+type TokenKind = 'cjk' | 'latin'
+
+interface TypographyToken {
+  start: number
+  end: number
+  kind: TokenKind
+}
+
+/** 把一个文本串切成中文片段 / 英文单词（按出现顺序） */
+function typographyTokens(data: string): TypographyToken[] {
+  const out: TypographyToken[] = []
+  TOKEN_RE.lastIndex = 0
+  let m: RegExpExecArray | null
+  while ((m = TOKEN_RE.exec(data))) {
+    const kind: TokenKind = /[A-Za-z0-9]/.test(m[0].charAt(0)) ? 'latin' : 'cjk'
+    let end = m.index + m[0].length
+    if (kind === 'latin') {
+      const pm = TRAILING_PUNCT.exec(data.slice(end))
+      if (pm) end += pm[0].length
+    }
+    out.push({ start: m.index, end, kind })
+    TOKEN_RE.lastIndex = end
+  }
+  return out
+}
+
+/** 所属块级宿主：判断相邻字符时不跨块 */
+function blockHostOf(node: Node): HTMLElement | null {
+  const el =
+    node.nodeType === Node.ELEMENT_NODE
+      ? (node as HTMLElement)
+      : node.parentElement
+  return el?.closest('p,h1,h2,h3,h4,h5,li,pre') ?? null
+}
+
+/** 前一个可见字符（可跨行内标记；行首返回 null） */
+function charBefore(node: Node): string | null {
+  const host = blockHostOf(node)
+  let cur: Node | null = node
+  while (cur) {
+    let prev = cur.previousSibling
+    while (prev) {
+      const text = prev.textContent ?? ''
+      if (text) return text.slice(-1)
+      prev = prev.previousSibling
+    }
+    if (!host || cur === host || !cur.parentElement) return null
+    cur = cur.parentElement
+  }
+  return null
+}
+
+/** 后一个可见字符（可跨行内标记；行尾返回 null） */
+function charAfter(node: Node): string | null {
+  const host = blockHostOf(node)
+  let cur: Node | null = node
+  while (cur) {
+    let next = cur.nextSibling
+    while (next) {
+      const text = next.textContent ?? ''
+      if (text) return text.slice(0, 1)
+      next = next.nextSibling
+    }
+    if (!host || cur === host || !cur.parentElement) return null
+    cur = cur.parentElement
+  }
+  return null
+}
+
+/**
+ * 与英文单词“视为一体”的相邻字符：拉丁字母、数字、ASCII 标点/符号（不含空格），
+ * 以及中文/全角标点（它们自身带留白）。与这些相邻时不再额外加间隔。
+ */
+const SOLID_NEIGHBOR =
+  /[A-Za-z0-9\u3000-\u303F\uFF01-\uFF65!-/:-@\[-`{-~]/
+
+/**
+ * 该侧是否需要留出英文间隔：单词两侧都留，
+ * 只有与英文字母/数字/ASCII 标点符号、或中文标点相连时才视为一体、不另加间隔。
+ */
+function needsEnGap(ch: string | null): boolean {
+  return ch !== null && !SOLID_NEIGHBOR.test(ch)
+}
+
+/** 清掉零长度的文本节点（包裹时 splitText 的副产物）。
+ *  它们不可见，却会让光标“落”在空节点上，导致行首 / 行中判定出错 */
+function removeEmptyTextNodes(root: HTMLElement): void {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  const empties: Text[] = []
+  let n: Node | null = walker.nextNode()
+  while (n) {
+    const t = n as Text
+    if (t.data.length === 0) empties.push(t)
+    n = walker.nextNode()
+  }
+  for (const t of empties) t.remove()
+}
+
+/** 去掉编辑器内的排版包裹标记（保持文本不变，仅还原结构） */
+export function unwrapTypographySpans(root: HTMLElement): void {
+  const sel = `span.${CJK_CLASS}, span.${LATIN_CLASS}`
+  for (const el of Array.from(root.querySelectorAll(sel))) {
     const parent = el.parentNode
     if (!parent) continue
     while (el.firstChild) parent.insertBefore(el.firstChild, el)
@@ -1238,32 +1371,38 @@ export function unwrapCjkSpans(root: HTMLElement): void {
   }
 }
 
-/** 给文本节点内的中文片段包上 .cjk（字距只作用于此标记，英文/数字不受影响） */
-function wrapCjkInTextNode(text: Text): void {
+/** 给一个文本节点里的中文片段 / 英文单词包上标记（不改变文本内容与长度） */
+function wrapTokensInTextNode(text: Text): void {
   let current: Text | null = text
   while (current) {
-    CJK_CHAR.lastIndex = 0
-    const m = CJK_CHAR.exec(current.data)
-    if (!m) break
-    const start = m.index
-    const end = start + m[0].length
-    const tail = current.splitText(end) // 中文之后
-    const cjkNode = current.splitText(start) // 中文片段
+    const token = typographyTokens(current.data)[0]
+    if (!token) break
+    const data = current.data
+    const before =
+      token.start > 0 ? data.charAt(token.start - 1) : charBefore(current)
+    const after =
+      token.end < data.length ? data.charAt(token.end) : charAfter(current)
+    const tail = current.splitText(token.end)
+    const node = current.splitText(token.start)
     const span = document.createElement('span')
-    span.className = CJK_CLASS
-    span.appendChild(cjkNode)
+    span.className = token.kind === 'cjk' ? CJK_CLASS : LATIN_CLASS
+    if (token.kind === 'latin') {
+      if (needsEnGap(before)) span.classList.add('latin--gap-l')
+      if (needsEnGap(after)) span.classList.add('latin--gap-r')
+    }
+    span.appendChild(node)
     tail.parentNode?.insertBefore(span, tail)
     current = tail
   }
 }
 
 /**
- * 重排中文包裹：先解包再按需包裹。
+ * 重排排版包裹：先解包再按需包裹。
  * 只处理普通文本节点，跳过代码块与行内代码；包裹不改变文本内容与长度，
  * 因此调用方可用文本索引精确恢复光标。
  */
-export function wrapCjkSpans(editor: HTMLElement): void {
-  unwrapCjkSpans(editor)
+export function wrapTypographySpans(editor: HTMLElement): void {
+  unwrapTypographySpans(editor)
   const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT)
   const texts: Text[] = []
   let n: Node | null = walker.nextNode()
@@ -1274,9 +1413,11 @@ export function wrapCjkSpans(editor: HTMLElement): void {
   for (const t of texts) {
     if (!t.data) continue
     const host = t.parentElement
+    // 跳过代码块与行内代码：格式不同，不参与正文的排版包裹
     if (!host || host.closest('pre, code')) continue
-    wrapCjkInTextNode(t)
+    wrapTokensInTextNode(t)
   }
+  removeEmptyTextNodes(editor)
 }
 
 /* ---------------- 回车拆块 ---------------- */
@@ -1324,7 +1465,8 @@ export function handleEnterKey(editor: HTMLElement): boolean {
   const hasBefore = textBeforeCaretInBlock(block, caret)
   const hasAfter = textAfterCaretInBlock(block, caret)
 
-  // —— 行首回车：在上方插入一个空行（当前块整体下移），光标停在上方新行 ——
+  // —— 行首回车：在光标处让出一个空行（当前块整体下移一行），
+  //    光标跟着这行文字一起下移，仍停在这一行文字的开头 ——
   if (!hasBefore) {
     if (block.tagName === 'LI') {
       const list = block.parentElement as HTMLElement | null
@@ -1332,12 +1474,12 @@ export function handleEnterKey(editor: HTMLElement): boolean {
       ensureBrForEmpty(li)
       if (list) list.insertBefore(li, block)
       else block.before(li)
-      placeCaretAtStartOf(li)
+      placeCaretAtStartOf(block) // 光标跟随原列表项
       return true
     }
     const lead = newParagraph()
     block.before(lead)
-    placeCaretAtStartOf(lead)
+    placeCaretAtStartOf(block) // 光标跟随原段落
     return true
   }
 

@@ -1,11 +1,12 @@
-import { computed, reactive, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 
 /**
  * 正文与标题（paragraph / h1 / h2 / h3）的可视化样式配置。
  *
  * - 全局生效：所有笔记共用一套，存 localStorage；
  * - 每种块可调：字号 / 字重 / 行高 / 颜色 / 斜体 / 下划线 / 删除线 /
- *   字间距 / 对齐 / 首行缩进 / 段间距；
+ *   字间距 / 对齐 / 首行缩进 / 段间距 / 英文间距；
+ * - 另有代码块外观预设（经典 / 内凹 / 强调条 / 深色终端 / 细线稿）；
  * - 通过 CSS 变量输出，.note-content 里的 p / h1 / h2 / h3 实时读取。
  */
 
@@ -42,6 +43,8 @@ export interface TextBlockStyle {
   textIndent: number
   /** 段间距 px（段落之间的空隙） */
   marginBottom: number
+  /** 英文间距 px：英文单词与相邻非拉丁字符（中文/标点）之间的空隙 */
+  enGap: number
 }
 
 export const TEXT_BLOCK_LABELS: Record<TextBlockKey, string> = {
@@ -59,33 +62,85 @@ export const TEXT_STYLE_DEFAULTS: Record<TextBlockKey, TextBlockStyle> = {
     fontSize: 16, fontWeight: 400, lineHeight: 1.8, color: '#37352f',
     italic: false, underline: false, strike: false,
     letterSpacing: 0.005, align: 'left', textIndent: 0, marginBottom: 6,
+    enGap: 0,
   },
   h1: {
     fontSize: 26, fontWeight: 700, lineHeight: 1.4, color: '#37352f',
     italic: false, underline: false, strike: false,
     letterSpacing: -0.012, align: 'left', textIndent: 0, marginBottom: 10,
+    enGap: 0,
   },
   h2: {
     fontSize: 22, fontWeight: 650, lineHeight: 1.4, color: '#37352f',
     italic: false, underline: false, strike: false,
     letterSpacing: -0.012, align: 'left', textIndent: 0, marginBottom: 8,
+    enGap: 0,
   },
   h3: {
     fontSize: 19, fontWeight: 620, lineHeight: 1.4, color: '#37352f',
     italic: false, underline: false, strike: false,
     letterSpacing: -0.012, align: 'left', textIndent: 0, marginBottom: 6,
+    enGap: 0,
   },
   h4: {
     fontSize: 17, fontWeight: 600, lineHeight: 1.45, color: '#37352f',
     italic: false, underline: false, strike: false,
     letterSpacing: -0.008, align: 'left', textIndent: 0, marginBottom: 5,
+    enGap: 0,
   },
   h5: {
     fontSize: 15.5, fontWeight: 560, lineHeight: 1.5, color: '#37352f',
     italic: false, underline: false, strike: false,
     letterSpacing: -0.005, align: 'left', textIndent: 0, marginBottom: 4,
+    enGap: 0,
   },
 }
+
+/* ---------------- 代码块外观（预设方案） ---------------- */
+
+export type CodeBlockStyleKey = 'now' | 'a' | 'b' | 'c' | 'd'
+
+export interface CodeBlockStyleOption {
+  key: CodeBlockStyleKey
+  name: string
+  desc: string
+}
+
+/** 代码块外观预设：与 style.css 里的 .code-* 类一一对应 */
+export const CODE_BLOCK_STYLES: readonly CodeBlockStyleOption[] = [
+  { key: 'now', name: '经典', desc: '浅灰底 + 1px 细边框（原始样式）' },
+  { key: 'a', name: '内凹', desc: '无边框，内侧阴影压入纸面（与整体新拟态一致）' },
+  { key: 'b', name: '强调条', desc: '极浅底 + 左侧 3px 竖条，右侧大圆角' },
+  { key: 'c', name: '深色终端', desc: '深色底 + 浅色等宽字（打印时自动转浅色）' },
+  { key: 'd', name: '细线稿', desc: '透明底 + 1px 细边框，最克制、最省墨' },
+]
+
+const CODE_BLOCK_STORAGE_KEY = 'notebook:codeBlockStyle:v1'
+
+function loadCodeStyle(): CodeBlockStyleKey {
+  try {
+    const raw = localStorage.getItem(CODE_BLOCK_STORAGE_KEY)
+    return CODE_BLOCK_STYLES.some((o) => o.key === raw)
+      ? (raw as CodeBlockStyleKey)
+      : 'now'
+  } catch {
+    return 'now'
+  }
+}
+
+/** 当前代码块外观（全局共用，与正文样式配置一起持久化） */
+const codeStyle = ref<CodeBlockStyleKey>(loadCodeStyle())
+
+watch(codeStyle, (v) => {
+  try {
+    localStorage.setItem(CODE_BLOCK_STORAGE_KEY, v)
+  } catch {
+    /* 存储不可用时忽略 */
+  }
+})
+
+/** 挂到 .note-content 上的外观类名（style.css 据此切换代码块样式） */
+const codeStyleClass = computed(() => `code-${codeStyle.value}`)
 
 const STORAGE_KEY = 'notebook:textStyles:v1'
 
@@ -157,6 +212,7 @@ function load(): Record<TextBlockKey, TextBlockStyle> {
         ? (s.align as TextAlign)
         : b.align
       b.textIndent = num(s.textIndent, 0, 3.5, b.textIndent)
+      b.enGap = num(s.enGap, 0, 16, b.enGap)
       if (key === 'paragraph') {
         // 正文段间距一直生效，沿用用户配置
         b.marginBottom = Math.round(
@@ -198,6 +254,7 @@ const cssVars = computed<Record<string, string | number>>(() => {
     if (s.underline) decorations.push('underline')
     if (s.strike) decorations.push('line-through')
     vars[`--${suf}-fs`] = `${s.fontSize}px`
+    vars[`--${suf}-en-gap`] = `${s.enGap}px`
     vars[`--${suf}-fw`] = s.fontWeight
     vars[`--${suf}-lh`] = s.lineHeight
     vars[`--${suf}-color`] = s.color
@@ -230,5 +287,8 @@ export function useNoteStyles() {
     resetBlock,
     labels: TEXT_BLOCK_LABELS,
     defaults: TEXT_STYLE_DEFAULTS,
+    codeStyle,
+    codeStyleClass,
+    codeStyles: CODE_BLOCK_STYLES,
   }
 }
