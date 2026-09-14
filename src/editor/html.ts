@@ -328,6 +328,10 @@ export function normalizeHtml(html: string): string {
     }
   }
   stripForeignStyles(body)
+  // 中文包裹标记只用于渲染层字距，不写入存储
+  for (const el of Array.from(body.querySelectorAll('span.cjk'))) {
+    unwrapEl(el)
+  }
   for (const el of Array.from(
     body.querySelectorAll('p,h1,h2,h3,h4,h5,h6,li,div'),
   )) {

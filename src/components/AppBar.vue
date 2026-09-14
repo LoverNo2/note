@@ -4,6 +4,7 @@ import type { Note } from "../types";
 import { useNotes } from "../composables/useNotes";
 import { useToast } from "../composables/useToast";
 import StyleSettings from "./StyleSettings.vue";
+import FontSwitcher from "./FontSwitcher.vue";
 import { textFromHtml } from "../editor/html";
 import { formatRelativeTime, noteSummary } from "../utils/format";
 
@@ -195,6 +196,7 @@ onBeforeUnmount(() =>
           </text>
         </svg>
       </button>
+      <FontSwitcher />
       <StyleSettings />
     </div>
   </header>

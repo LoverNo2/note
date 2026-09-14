@@ -1,90 +1,8 @@
 /* ============================================================
-   自托管等宽字体 —— Menlo（代码块 / 行内代码 + 编辑器英文与数字）
-   字体文件位于项目 asset/fonts/Menlo/，由 Vite 打包为资源。
+   字体：由 src/composables/useFonts.ts 自动扫描 asset/fonts/ 并注入 @font-face
+   （英文 / 中文可在右上角「字体」按钮里分别设置）
+   此处只保留变量兜底：JS 未运行或注入前回退系统字体。
    ============================================================ */
-@font-face {
-  font-family: 'Menlo';
-  src: url('../asset/fonts/Menlo/Menlo-Regular-1.ttf') format('truetype');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Menlo';
-  src: url('../asset/fonts/Menlo/Menlo-Bold-2.ttf') format('truetype');
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Menlo';
-  src: url('../asset/fonts/Menlo/Menlo-Italic-4.ttf') format('truetype');
-  font-weight: 400;
-  font-style: italic;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Menlo';
-  src: url('../asset/fonts/Menlo/Menlo-BoldItalic-3.ttf') format('truetype');
-  font-weight: 700;
-  font-style: italic;
-  font-display: swap;
-}
-
-/* ============================================================
-   自托管苹方字体 —— PingFang SC（简体 6 字重，woff2）
-   界面中英文 + 编辑器中文由它承载（文件在 asset/fonts/PingFangSC/）；
-   同一 family 下按 font-weight 命中对应字重文件。
-   ============================================================ */
-@font-face {
-  font-family: 'PingFang SC';
-  src: url('../asset/fonts/PingFangSC/PingFangSC-Ultralight.woff2')
-    format('woff2');
-  font-weight: 100;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'PingFang SC';
-  src: url('../asset/fonts/PingFangSC/PingFangSC-Thin.woff2')
-    format('woff2');
-  font-weight: 200;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'PingFang SC';
-  src: url('../asset/fonts/PingFangSC/PingFangSC-Light.woff2')
-    format('woff2');
-  font-weight: 300;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'PingFang SC';
-  src: url('../asset/fonts/PingFangSC/PingFangSC-Regular.woff2')
-    format('woff2');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'PingFang SC';
-  src: url('../asset/fonts/PingFangSC/PingFangSC-Medium.woff2')
-    format('woff2');
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'PingFang SC';
-  src: url('../asset/fonts/PingFangSC/PingFangSC-Semibold.woff2')
-    format('woff2');
-  font-weight: 600 700;
-  font-style: normal;
-  font-display: swap;
-}
-
 /* ============================================================
    设计令牌 —— 冷调极简（Notion / Linear 风格）
    ============================================================ */
@@ -138,10 +56,12 @@
   /* 等宽字体（代码块 / 行内代码）：英文 Menlo（自托管），代码内中文兜底苹方 */
   --font-mono: 'Menlo', ui-monospace, 'SF Mono', 'Cascadia Code', Consolas,
     'PingFang SC', monospace;
-  /* 编辑器正文：英文 / 数字用 Menlo（自托管等宽），汉字为苹方 PingFang SC */
+  /* 编辑器正文：英文/数字与中文分别由变量决定（右上角「字体」按钮可切换） */
+  --font-latin: 'Menlo';
+  --font-cjk: 'PingFang SC';
   --font-content:
-    'Menlo', 'PingFang SC', -apple-system, 'Segoe UI', 'Microsoft YaHei',
-    'Helvetica Neue', Helvetica, Arial, sans-serif;
+    var(--font-latin), var(--font-cjk), -apple-system, 'Segoe UI',
+    'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
 
 /* ============================================================
@@ -440,7 +360,7 @@ textarea,
   font-family: var(--font-content);
   font-size: 16px;
   line-height: 1.8;
-  letter-spacing: 0.005em;
+  letter-spacing: normal; /* 字距只作用于中文包裹标记 .cjk */
   color: var(--text-strong);
   position: relative;
   word-break: break-word;
@@ -471,7 +391,7 @@ textarea,
   color: var(--p-color, var(--text-strong));
   font-style: var(--p-italic, normal);
   text-decoration-line: var(--p-dec, none);
-  letter-spacing: var(--p-ls, 0.005em);
+  --cjk-ls: var(--p-ls, 0.005em); /* 中文专用字距 */
   text-align: var(--p-align, left);
   text-indent: var(--p-indent, 0em);
   margin-bottom: var(--p-mb, 6px);
@@ -489,7 +409,7 @@ textarea,
   color: var(--h1-color, var(--text-strong));
   font-style: var(--h1-italic, normal);
   text-decoration-line: var(--h1-dec, none);
-  letter-spacing: var(--h1-ls, -0.012em);
+  --cjk-ls: var(--h1-ls, -0.012em); /* 中文专用字距 */
   text-align: var(--h1-align, left);
   text-indent: var(--h1-indent, 0em);
   margin: 0.9em 0 var(--h1-mb, 10px);
@@ -501,7 +421,7 @@ textarea,
   color: var(--h2-color, var(--text-strong));
   font-style: var(--h2-italic, normal);
   text-decoration-line: var(--h2-dec, none);
-  letter-spacing: var(--h2-ls, -0.012em);
+  --cjk-ls: var(--h2-ls, -0.012em); /* 中文专用字距 */
   text-align: var(--h2-align, left);
   text-indent: var(--h2-indent, 0em);
   margin: 0.85em 0 var(--h2-mb, 8px);
@@ -513,7 +433,7 @@ textarea,
   color: var(--h3-color, var(--text-strong));
   font-style: var(--h3-italic, normal);
   text-decoration-line: var(--h3-dec, none);
-  letter-spacing: var(--h3-ls, -0.012em);
+  --cjk-ls: var(--h3-ls, -0.012em); /* 中文专用字距 */
   text-align: var(--h3-align, left);
   text-indent: var(--h3-indent, 0em);
   margin: 0.8em 0 var(--h3-mb, 6px);
@@ -525,7 +445,7 @@ textarea,
   color: var(--h4-color, var(--text-strong));
   font-style: var(--h4-italic, normal);
   text-decoration-line: var(--h4-dec, none);
-  letter-spacing: var(--h4-ls, -0.008em);
+  --cjk-ls: var(--h4-ls, -0.008em); /* 中文专用字距 */
   text-align: var(--h4-align, left);
   text-indent: var(--h4-indent, 0em);
   margin: 0.8em 0 var(--h4-mb, 5px);
@@ -537,11 +457,16 @@ textarea,
   color: var(--h5-color, var(--text-strong));
   font-style: var(--h5-italic, normal);
   text-decoration-line: var(--h5-dec, none);
-  letter-spacing: var(--h5-ls, -0.005em);
+  --cjk-ls: var(--h5-ls, -0.005em); /* 中文专用字距 */
   text-align: var(--h5-align, left);
   text-indent: var(--h5-indent, 0em);
   margin: 0.75em 0 var(--h5-mb, 4px);
 }
+/* 中文专用字距：只有渲染层包裹的中文片段应用字距，英文/数字/符号不受影响 */
+.note-content .cjk {
+  letter-spacing: var(--cjk-ls, 0em);
+}
+
 .note-content > h1:first-child,
 .note-content > h2:first-child,
 .note-content > h3:first-child,
@@ -615,7 +540,7 @@ textarea,
   color: var(--p-color, var(--text-strong));
   font-style: var(--p-italic, normal);
   text-decoration-line: var(--p-dec, none);
-  letter-spacing: var(--p-ls, 0.005em);
+  --cjk-ls: var(--p-ls, 0.005em); /* 中文专用字距 */
   text-align: var(--p-align, left);
   margin: 0 0 var(--p-mb, 6px);
   padding-left: 0.2em;

@@ -38,6 +38,8 @@ import {
   setBlockType,
   tidyBlock,
   toggleInlineMark,
+  unwrapCjkSpans,
+  wrapCjkSpans,
 } from "../editor/blocks";
 import {
   legacyTextToHtml,
@@ -219,6 +221,15 @@ function doRedo(): void {
 
 let suppressContentWatch = false;
 let syncTimer: number | undefined;
+/** 输入法组合中（此时不重排 DOM，避免打断中文候选词） */
+let composing = false;
+function onCompositionStart(): void {
+  composing = true;
+}
+function onCompositionEnd(): void {
+  composing = false;
+  scheduleSync();
+}
 
 /** 组件卸载时 currentNote 可能已指向下一条笔记；只在装载的这条笔记上写回 */
 const mountedNoteId: string | null = currentNote.value?.id ?? null;
@@ -260,10 +271,17 @@ function syncNoteFromDom(): void {
   if (!note || !el) return;
   if (note.id !== mountedNoteId) return; // 卸载期防止把旧 DOM 写进新笔记
   tidyEditorDom(el); // 清理粘贴/合并留下的样式与行尾占位 br
-  const html = normalizeEditorHtml(el);
+  const html = normalizeEditorHtml(el); // 读取时会剥离中文包裹标记，存储保持干净
   suppressContentWatch = true;
   if (note.content !== html) note.content = html;
   suppressContentWatch = false;
+  // 重排中文包裹（只影响渲染层字距，不改变文本），并保持光标位置。
+  // 输入法组合期间不动 DOM，避免打断候选词。
+  if (!composing) {
+    const caret = caretTextIndex(el);
+    wrapCjkSpans(el);
+    if (caret >= 0) restoreCaretByTextIndex(el, caret);
+  }
   markEdited();
   updateEmptyClass();
 }
@@ -296,6 +314,7 @@ function loadContent(): void {
   el.innerHTML = html;
   // 代码块内的换行在编辑期用 <br> 表示（光标行为才可靠），存储仍是换行符
   codeTextToBrDom(el);
+  wrapCjkSpans(el); // 中文片段包裹（字距只作用于此）
   suppressContentWatch = true;
   if (note.content !== html) note.content = html;
   suppressContentWatch = false;
@@ -606,6 +625,7 @@ function onCopy(e: ClipboardEvent): void {
   const frag = sel.getRangeAt(0).cloneContents();
   const box = document.createElement("div");
   box.appendChild(frag);
+  unwrapCjkSpans(box); // 复制出去的内容不带中文包裹标记
   const cleaned = sanitizeHtml(box.innerHTML);
   if (!cleaned) return;
 
@@ -702,6 +722,8 @@ onBeforeUnmount(() => {
             aria-multiline="true"
             :style="cssVars"
             @input="onContentInput"
+            @compositionstart="onCompositionStart"
+            @compositionend="onCompositionEnd"
             @keydown="onKeydown"
             @paste="onPaste"
             @copy="onCopy"

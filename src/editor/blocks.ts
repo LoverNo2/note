@@ -1222,6 +1222,63 @@ export function toggleInlineMark(editor: HTMLElement, mark: InlineMark): boolean
   return true
 }
 
+/* ---------------- 中文专用字距（渲染层包裹） ---------------- */
+
+/** 中文字符：CJK 统一表意文字 / 扩展 A / 兼容表意文字 */
+const CJK_CHAR = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]+/g
+const CJK_CLASS = 'cjk'
+
+/** 去掉编辑器内的中文包裹标记（保持文本不变，仅还原结构） */
+export function unwrapCjkSpans(root: HTMLElement): void {
+  for (const el of Array.from(root.querySelectorAll(`span.${CJK_CLASS}`))) {
+    const parent = el.parentNode
+    if (!parent) continue
+    while (el.firstChild) parent.insertBefore(el.firstChild, el)
+    el.remove()
+  }
+}
+
+/** 给文本节点内的中文片段包上 .cjk（字距只作用于此标记，英文/数字不受影响） */
+function wrapCjkInTextNode(text: Text): void {
+  let current: Text | null = text
+  while (current) {
+    CJK_CHAR.lastIndex = 0
+    const m = CJK_CHAR.exec(current.data)
+    if (!m) break
+    const start = m.index
+    const end = start + m[0].length
+    const tail = current.splitText(end) // 中文之后
+    const cjkNode = current.splitText(start) // 中文片段
+    const span = document.createElement('span')
+    span.className = CJK_CLASS
+    span.appendChild(cjkNode)
+    tail.parentNode?.insertBefore(span, tail)
+    current = tail
+  }
+}
+
+/**
+ * 重排中文包裹：先解包再按需包裹。
+ * 只处理普通文本节点，跳过代码块与行内代码；包裹不改变文本内容与长度，
+ * 因此调用方可用文本索引精确恢复光标。
+ */
+export function wrapCjkSpans(editor: HTMLElement): void {
+  unwrapCjkSpans(editor)
+  const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT)
+  const texts: Text[] = []
+  let n: Node | null = walker.nextNode()
+  while (n) {
+    texts.push(n as Text)
+    n = walker.nextNode()
+  }
+  for (const t of texts) {
+    if (!t.data) continue
+    const host = t.parentElement
+    if (!host || host.closest('pre, code')) continue
+    wrapCjkInTextNode(t)
+  }
+}
+
 /* ---------------- 回车拆块 ---------------- */
 
 /**

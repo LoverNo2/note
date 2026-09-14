@@ -4,9 +4,13 @@ import AppBar from './components/AppBar.vue'
 import NoteEditor from './components/NoteEditor.vue'
 import { useNotes } from './composables/useNotes'
 import { useToast } from './composables/useToast'
+import { useFonts } from './composables/useFonts'
 
 const { currentNote, createNote, loadFromProject, saveToProject } = useNotes()
 const { toast } = useToast()
+
+// 启动即注入 asset/fonts 下的字体并应用已保存的字体选择
+useFonts().initFonts()
 
 function onCreateFirst(): void {
   createNote()
