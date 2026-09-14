@@ -1256,11 +1256,13 @@ const CJK_CLASS = 'cjk'
 const LATIN_CLASS = 'latin'
 
 /** 文本分片：中文片段，或英文单词（词内允许 . ' - _ ，并吞掉紧跟其后的标点） */
+/**
+ * 文本分片：中文片段 / 英文单词（词内允许 . ' - _）/ ASCII 标点符号（含各类括号）。
+ * 标点单独成片，好处是它与中文相邻的一侧也能算出间隔
+ * （例如 add_child(主场景) 里 （ 的右侧、) 的左侧都要留空）。
+ */
 const TOKEN_RE =
-  /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]+|[A-Za-z0-9]+(?:[.'’\-_][A-Za-z0-9]+)*/g
-/** 紧跟英文单词的 ASCII 标点/符号：并入同一个包裹，与字母视为一体
- *  （中文标点不并：全角标点自带空隙，并入反而会让句号后多出间隔） */
-const TRAILING_PUNCT = /^[.,;:!?%'")\]}>/\\|+*&^$#@~`\-]+/
+  /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]+|[A-Za-z0-9]+(?:[.'’\-_][A-Za-z0-9]+)*|[!-/:-@\[-`{-~]+/g
 
 type TokenKind = 'cjk' | 'latin'
 
@@ -1270,20 +1272,18 @@ interface TypographyToken {
   kind: TokenKind
 }
 
-/** 把一个文本串切成中文片段 / 英文单词（按出现顺序） */
+/** 把一个文本串切成中文片段 / 英文单词 / ASCII 标点（按出现顺序） */
 function typographyTokens(data: string): TypographyToken[] {
   const out: TypographyToken[] = []
   TOKEN_RE.lastIndex = 0
   let m: RegExpExecArray | null
   while ((m = TOKEN_RE.exec(data))) {
-    const kind: TokenKind = /[A-Za-z0-9]/.test(m[0].charAt(0)) ? 'latin' : 'cjk'
-    let end = m.index + m[0].length
-    if (kind === 'latin') {
-      const pm = TRAILING_PUNCT.exec(data.slice(end))
-      if (pm) end += pm[0].length
-    }
-    out.push({ start: m.index, end, kind })
-    TOKEN_RE.lastIndex = end
+    const kind: TokenKind = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/.test(
+      m[0].charAt(0),
+    )
+      ? 'cjk'
+      : 'latin' // 数字 / 字母 / ASCII 标点都属于西文体系
+    out.push({ start: m.index, end: m.index + m[0].length, kind })
   }
   return out
 }
@@ -1332,11 +1332,11 @@ function charAfter(node: Node): string | null {
 }
 
 /**
- * 与英文单词“视为一体”的相邻字符：拉丁字母、数字、ASCII 标点/符号（不含空格），
- * 以及中文/全角标点（它们自身带留白）。与这些相邻时不再额外加间隔。
+ * 与西文“视为一体”的相邻字符：拉丁字母、数字、ASCII 标点/符号（不含空格）。
+ * 与这些相邻时不再额外加间隔；与空格、中文、中文/全角标点相邻都会留出间隔
+ * （所以 add_child(主场景实例)。 里括号两侧都有空隙）。
  */
-const SOLID_NEIGHBOR =
-  /[A-Za-z0-9\u3000-\u303F\uFF01-\uFF65!-/:-@\[-`{-~]/
+const SOLID_NEIGHBOR = /[A-Za-z0-9!-/:-@\[-`{-~]/
 
 /**
  * 该侧是否需要留出英文间隔：单词两侧都留，
@@ -1401,7 +1401,10 @@ function wrapTokensInTextNode(text: Text): void {
  * 只处理普通文本节点，跳过代码块与行内代码；包裹不改变文本内容与长度，
  * 因此调用方可用文本索引精确恢复光标。
  */
-export function wrapTypographySpans(editor: HTMLElement): void {
+export function wrapTypographySpans(
+  editor: HTMLElement,
+  bgByTag?: Record<string, string>,
+): void {
   unwrapTypographySpans(editor)
   const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT)
   const texts: Text[] = []
@@ -1418,6 +1421,63 @@ export function wrapTypographySpans(editor: HTMLElement): void {
     wrapTokensInTextNode(t)
   }
   removeEmptyTextNodes(editor)
+  if (bgByTag) syncHighlightSpans(editor, bgByTag) // 底色：只包住文字范围
+}
+
+/* ---------------- 底色（行内高亮，只覆盖文字范围） ---------------- */
+
+const HL_CLASS = 'hl'
+
+/** 解包行内底色标记（文本不变，仅还原结构） */
+export function unwrapHighlightSpans(root: HTMLElement): void {
+  for (const el of Array.from(root.querySelectorAll(`span.${HL_CLASS}`))) {
+    unwrapElement(el)
+  }
+}
+
+/** 该块是否已被行内底色包裹 */
+function isHighlightWrapped(block: HTMLElement): boolean {
+  const first = block.firstElementChild as HTMLElement | null
+  return (
+    !!first &&
+    first.tagName === 'SPAN' &&
+    first.classList.contains(HL_CLASS) &&
+    block.childNodes.length === 1
+  )
+}
+
+/**
+ * 按各块底色配置维护行内底色标记（幂等，可反复调用）：
+ * - 有底色且未包裹 → 用 <span class="hl"> 包住块内容，底色只覆盖文字范围
+ * - 无底色 / 空块 → 解包
+ */
+export function syncHighlightSpans(
+  editor: HTMLElement,
+  bgByTag: Record<string, string>,
+): void {
+  const blocks: HTMLElement[] = []
+  for (const child of Array.from(editor.children) as HTMLElement[]) {
+    if (child.tagName === 'UL' || child.tagName === 'OL') {
+      blocks.push(...(Array.from(child.children) as HTMLElement[])) // li
+    } else {
+      blocks.push(child)
+    }
+  }
+  for (const block of blocks) {
+    const bg = bgByTag[block.tagName] ?? 'transparent'
+    const wrapped = isHighlightWrapped(block)
+    if (!bg || bg === 'transparent') {
+      if (wrapped) unwrapElement(block.firstElementChild as Element)
+      continue
+    }
+    if (wrapped) continue
+    if (block.tagName === 'PRE' || block.tagName === 'HR') continue
+    if (!(block.textContent ?? '')) continue // 空块不铺底色
+    const span = document.createElement('span')
+    span.className = HL_CLASS
+    span.append(...Array.from(block.childNodes))
+    block.appendChild(span)
+  }
 }
 
 /* ---------------- 回车拆块 ---------------- */

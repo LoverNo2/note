@@ -1,11 +1,5 @@
 <script setup lang="ts">
-import {
-  computed,
-  nextTick,
-  onBeforeUnmount,
-  onMounted,
-  ref,
-} from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import {
   useNoteStyles,
   type TextBlockKey,
@@ -99,10 +93,7 @@ function savedSnapOfActive(): StyleSnapshot | undefined {
 }
 
 /** 该项当前值是否与最近保存一致（一致则隐藏单项 ↺ 图标） */
-function isSavedEqual(
-  key: TextBlockKey,
-  field: keyof TextBlockStyle,
-): boolean {
+function isSavedEqual(key: TextBlockKey, field: keyof TextBlockStyle): boolean {
   const saved = savedSnapOfActive()?.styles?.[key] as
     | Record<string, unknown>
     | undefined;
@@ -119,8 +110,23 @@ function resetFieldToSaved(
   const saved = savedSnapOfActive()?.styles?.[key] as
     | Record<string, unknown>
     | undefined;
-  if (!saved || saved[field] === undefined) return;
-  (state[key] as unknown as Record<string, unknown>)[field] = saved[field];
+  const fallback = defaults[key] as unknown as Record<string, unknown>;
+  // 旧快照缺该字段时回退到系统默认，保证「撤销改动」总有效果
+  const target =
+    saved && saved[field] !== undefined ? saved[field] : fallback[field];
+  if (target === undefined) return;
+  (state[key] as unknown as Record<string, unknown>)[field] = target;
+}
+
+/** 底色行：底色 + 不透明度是否与最近保存一致 */
+function isBgSavedEqual(key: TextBlockKey): boolean {
+  return isSavedEqual(key, "bg") && isSavedEqual(key, "bgAlpha");
+}
+
+/** 底色行「撤销改动」：底色与不透明度一起恢复为最近保存的值 */
+function resetBgSaved(key: TextBlockKey): void {
+  resetFieldToSaved(key, "bg");
+  resetFieldToSaved(key, "bgAlpha");
 }
 
 /** 形态行（斜体/下划线/删除线）是否与最近保存一致 */
@@ -176,12 +182,29 @@ interface StyleSnapshot {
 const SNAPSHOTS_KEY = "notebook:textStyles:snapshots:v1";
 const snapList = ref<StyleSnapshot[]>([]);
 
+const SNAP_GAP_MIGRATED_KEY = "notebook:textStyles:snapshots:segGapMigrated";
+
 function readSnapshots(): StyleSnapshot[] {
   try {
     const raw = localStorage.getItem(SNAPSHOTS_KEY);
-    if (!raw) return [];
+    if (!raw) {
+      // 没有旧方案：无需迁移，直接打标记
+      localStorage.setItem(SNAP_GAP_MIGRATED_KEY, "1");
+      return [];
+    }
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as StyleSnapshot[]) : [];
+    if (!Array.isArray(parsed)) return [];
+    const list = parsed as StyleSnapshot[];
+    // 一次性迁移：方案里正文段的旧默认段间距 6px → 0（与自动换行行距一致）
+    if (localStorage.getItem(SNAP_GAP_MIGRATED_KEY) !== "1") {
+      for (const snap of list) {
+        const p = snap?.styles?.paragraph;
+        if (p && p.marginBottom === 6) p.marginBottom = 0;
+      }
+      localStorage.setItem(SNAP_GAP_MIGRATED_KEY, "1");
+      persistSnapshots(list);
+    }
+    return list;
   } catch {
     return [];
   }
@@ -203,11 +226,10 @@ function cloneState(): Record<TextBlockKey, TextBlockStyle> {
 }
 
 /** 把某份样式配置套用到当前 state（缺项回退到系统默认） */
-function restoreState(
-  src?: Record<TextBlockKey, TextBlockStyle>,
-): void {
+function restoreState(src?: Record<TextBlockKey, TextBlockStyle>): void {
   for (const key of BLOCK_KEYS) {
-    state[key] = { ...(src?.[key] ?? defaults[key]) };
+    // 与默认值合并：旧快照缺字段时回退默认，避免出现 NaN / undefined
+    state[key] = { ...defaults[key], ...(src?.[key] ?? {}) };
   }
 }
 
@@ -246,6 +268,22 @@ const dirty = computed(() => {
   if (!snap) return false;
   return JSON.stringify(snap.styles) !== JSON.stringify(cloneState());
 });
+
+/** 底色：'transparent' 表示无底色；色板需要 hex，所以无底色时以纯白起步 */
+const bgSwatch = computed(() =>
+  state[activeKey.value].bg === "transparent"
+    ? "#ffffff"
+    : state[activeKey.value].bg,
+);
+const bgLabel = computed(() =>
+  state[activeKey.value].bg === "transparent"
+    ? "无"
+    : state[activeKey.value].bg,
+);
+
+function setBg(value: string): void {
+  state[activeKey.value].bg = value;
+}
 
 function togglePicker(): void {
   if (pickerOpen.value) {
@@ -462,7 +500,9 @@ onBeforeUnmount(() => {
                 title="选择 / 管理样式配置"
                 @click.stop="togglePicker"
               >
-                <span class="ss__trigger-label">{{ customActive ?? "默认样式" }}</span>
+                <span class="ss__trigger-label">{{
+                  customActive ?? "默认样式"
+                }}</span>
               </button>
               <input
                 v-else
@@ -506,10 +546,7 @@ onBeforeUnmount(() => {
                         }}</span>
                       </span>
 
-                      <span
-                        v-if="deletingName === s.name"
-                        class="ss__popt-ops"
-                      >
+                      <span v-if="deletingName === s.name" class="ss__popt-ops">
                         <button
                           class="ss__mini danger"
                           @click="confirmDeleteStyle(s)"
@@ -700,6 +737,57 @@ onBeforeUnmount(() => {
             </button>
           </div>
 
+          <!-- 底色（'无' = 透明，不铺底色；底色只覆盖文字范围） -->
+          <div class="f-row">
+            <span class="f-label">底色</span>
+            <label
+              class="c-swatch c-swatch--bg"
+              title="点击选择底色；不透明度可单独调整"
+            >
+              <input
+                type="color"
+                :value="bgSwatch"
+                @input="setBg(($event.target as HTMLInputElement).value)"
+              />
+            </label>
+            <span class="f-val f-val--mono f-val--bg">{{ bgLabel }}</span>
+            <button
+              class="f-reset"
+              :class="{ off: isBgSavedEqual(activeKey) }"
+              title="撤销底色改动（恢复为最近保存的底色与不透明度）"
+              @click="resetBgSaved(activeKey)"
+            >
+              ↺
+            </button>
+          </div>
+
+          <!-- 底色不透明度（0~100%） -->
+          <div class="f-row">
+            <span class="f-label">不透明度</span>
+            <input
+              v-model.number="state[activeKey].bgAlpha"
+              class="range"
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              :style="{ '--pct': pct(0, 1, state[activeKey].bgAlpha) }"
+              @pointerdown="blurRangeOnDown"
+              @mouseup="blurRange"
+            />
+            <span class="f-val"
+              >{{ Math.round(state[activeKey].bgAlpha * 100) }}%</span
+            >
+            <button
+              class="f-reset"
+              :class="{ off: isSavedEqual(activeKey, 'bgAlpha') }"
+              title="恢复不透明度默认"
+              @click="resetFieldToSaved(activeKey, 'bgAlpha')"
+            >
+              ↺
+            </button>
+          </div>
+
           <!-- 形态：斜体 / 下划线 / 删除线（可多选） -->
           <div class="f-row">
             <span class="f-label">形态</span>
@@ -878,7 +966,9 @@ onBeforeUnmount(() => {
           >
             <span class="cb-opt__head">
               <span class="cb-opt__name">{{ opt.name }}</span>
-              <span v-if="codeStyle === opt.key" class="cb-opt__badge">当前</span>
+              <span v-if="codeStyle === opt.key" class="cb-opt__badge"
+                >当前</span
+              >
             </span>
             <span class="cb-opt__desc">{{ opt.desc }}</span>
             <span
@@ -1063,6 +1153,37 @@ onBeforeUnmount(() => {
 }
 .f-val--mono {
   font-family: var(--font-mono);
+}
+/* 底色行的值固定成 hex 的宽度：这样色板（第二列）与上面的「颜色」行等宽 */
+.f-val--bg {
+  min-width: 60px;
+}
+/* 底色色板：外观与 .c-swatch 完全一致（同样的边框 / 圆角 / 白底 / hover），
+   只是内部套了一个原生 color input，直接显示所选颜色 */
+.c-swatch--bg {
+  position: relative;
+  display: block;
+  padding: 0;
+  overflow: hidden;
+}
+.c-swatch--bg input[type="color"] {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 7px; /* 与 .c-swatch::-webkit-color-swatch 的圆角一致 */
+  background: transparent;
+  cursor: pointer;
+}
+.c-swatch--bg input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.c-swatch--bg input[type="color"]::-webkit-color-swatch {
+  border: none;
+  border-radius: 7px;
 }
 .f-val--empty {
   min-width: 0;

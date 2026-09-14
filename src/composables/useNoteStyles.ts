@@ -5,7 +5,7 @@ import { computed, reactive, ref, watch } from 'vue'
  *
  * - 全局生效：所有笔记共用一套，存 localStorage；
  * - 每种块可调：字号 / 字重 / 行高 / 颜色 / 斜体 / 下划线 / 删除线 /
- *   字间距 / 对齐 / 首行缩进 / 段间距 / 英文间距；
+ *   底色 / 字间距 / 对齐 / 首行缩进 / 段间距 / 英文间距；
  * - 另有代码块外观预设（经典 / 内凹 / 强调条 / 深色终端 / 细线稿）；
  * - 通过 CSS 变量输出，.note-content 里的 p / h1 / h2 / h3 实时读取。
  */
@@ -29,6 +29,10 @@ export interface TextBlockStyle {
   lineHeight: number
   /** 文字颜色（hex） */
   color: string
+  /** 底色（hex；'transparent' 为兼容旧数据的无底色写法） */
+  bg: string
+  /** 底色不透明度 0~1（默认 0，即 rgba(255,255,255,0) 全透明） */
+  bgAlpha: number
   /** 整块斜体 */
   italic: boolean
   /** 整块下划线 */
@@ -60,36 +64,48 @@ export const TEXT_BLOCK_LABELS: Record<TextBlockKey, string> = {
 export const TEXT_STYLE_DEFAULTS: Record<TextBlockKey, TextBlockStyle> = {
   paragraph: {
     fontSize: 16, fontWeight: 400, lineHeight: 1.8, color: '#37352f',
+    bg: '#ffffff',
+    bgAlpha: 0,
     italic: false, underline: false, strike: false,
-    letterSpacing: 0.005, align: 'left', textIndent: 0, marginBottom: 6,
+    letterSpacing: 0.005, align: 'left', textIndent: 0, marginBottom: 0,
     enGap: 0,
   },
   h1: {
     fontSize: 26, fontWeight: 700, lineHeight: 1.4, color: '#37352f',
+    bg: '#ffffff',
+    bgAlpha: 0,
     italic: false, underline: false, strike: false,
     letterSpacing: -0.012, align: 'left', textIndent: 0, marginBottom: 10,
     enGap: 0,
   },
   h2: {
     fontSize: 22, fontWeight: 650, lineHeight: 1.4, color: '#37352f',
+    bg: '#ffffff',
+    bgAlpha: 0,
     italic: false, underline: false, strike: false,
     letterSpacing: -0.012, align: 'left', textIndent: 0, marginBottom: 8,
     enGap: 0,
   },
   h3: {
     fontSize: 19, fontWeight: 620, lineHeight: 1.4, color: '#37352f',
+    bg: '#ffffff',
+    bgAlpha: 0,
     italic: false, underline: false, strike: false,
     letterSpacing: -0.012, align: 'left', textIndent: 0, marginBottom: 6,
     enGap: 0,
   },
   h4: {
     fontSize: 17, fontWeight: 600, lineHeight: 1.45, color: '#37352f',
+    bg: '#ffffff',
+    bgAlpha: 0,
     italic: false, underline: false, strike: false,
     letterSpacing: -0.008, align: 'left', textIndent: 0, marginBottom: 5,
     enGap: 0,
   },
   h5: {
     fontSize: 15.5, fontWeight: 560, lineHeight: 1.5, color: '#37352f',
+    bg: '#ffffff',
+    bgAlpha: 0,
     italic: false, underline: false, strike: false,
     letterSpacing: -0.005, align: 'left', textIndent: 0, marginBottom: 4,
     enGap: 0,
@@ -142,7 +158,23 @@ watch(codeStyle, (v) => {
 /** 挂到 .note-content 上的外观类名（style.css 据此切换代码块样式） */
 const codeStyleClass = computed(() => `code-${codeStyle.value}`)
 
+/** 底色 hex + 不透明度 → CSS 颜色（alpha = 1 时输出 hex，否则输出 rgba） */
+export function bgToCss(hex: string, alpha: number): string {
+  const m = /^#([0-9a-fA-F]{6})$/.exec(hex || '')
+  if (!m) return 'transparent'
+  const a = Math.min(1, Math.max(0, alpha))
+  if (a <= 0) return 'transparent'
+  if (a >= 1) return hex
+  const n = parseInt(m[1], 16)
+  const r = (n >> 16) & 255
+  const g = (n >> 8) & 255
+  const b = n & 255
+  return `rgba(${r}, ${g}, ${b}, ${a})`
+}
+
 const STORAGE_KEY = 'notebook:textStyles:v1'
+/** 正文段间距默认值迁移标记（6 → 0） */
+export const SEG_GAP_MIGRATED_KEY = 'notebook:textStyles:segGapMigrated'
 
 /** 变量名后缀：paragraph → p，其余同 kind */
 const VAR_SUFFIX: Record<TextBlockKey, string> = {
@@ -189,7 +221,11 @@ function load(): Record<TextBlockKey, TextBlockStyle> {
   const base = cloneDefaults()
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return base
+    if (!raw) {
+      // 没有旧数据：无需迁移，直接打标记，避免以后误改用户新设的值
+      localStorage.setItem(SEG_GAP_MIGRATED_KEY, '1')
+      return base
+    }
     const parsed: unknown = JSON.parse(raw)
     if (typeof parsed !== 'object' || parsed === null) return base
     const obj = parsed as Record<string, unknown>
@@ -211,19 +247,30 @@ function load(): Record<TextBlockKey, TextBlockStyle> {
       b.align = ALIGNS.includes(s.align as TextAlign)
         ? (s.align as TextAlign)
         : b.align
+      b.bg =
+        s.bg === 'transparent' || /^#[0-9a-fA-F]{6}$/.test(s.bg as string)
+          ? (s.bg as string)
+          : b.bg
+      b.bgAlpha = num(s.bgAlpha, 0, 1, b.bgAlpha)
       b.textIndent = num(s.textIndent, 0, 3.5, b.textIndent)
       b.enGap = num(s.enGap, 0, 16, b.enGap)
       if (key === 'paragraph') {
-        // 正文段间距一直生效，沿用用户配置
-        b.marginBottom = Math.round(
-          num(s.marginBottom, 0, 48, b.marginBottom),
-        )
+        // 正文段间距：旧默认值是 6px，会让「回车分段」比「自动换行」多出空隙；
+        // 现在统一为 0（两种换行的行距都等于行高），旧数据一次性迁移
+        const migrated = localStorage.getItem(SEG_GAP_MIGRATED_KEY) === '1'
+        const stored = Math.round(num(s.marginBottom, 0, 48, b.marginBottom))
+        b.marginBottom = !migrated && stored === 6 ? 0 : stored
       }
       // 标题：旧版本 marginBottom 字段未接入 CSS（一直不生效），
       // 由新版视觉默认接管，避免旧存的 0 压扁标题与正文的间距
     }
   } catch {
     /* 读取失败用默认 */
+  }
+  try {
+    localStorage.setItem(SEG_GAP_MIGRATED_KEY, '1')
+  } catch {
+    /* 忽略 */
   }
   return base
 }
@@ -254,6 +301,7 @@ const cssVars = computed<Record<string, string | number>>(() => {
     if (s.underline) decorations.push('underline')
     if (s.strike) decorations.push('line-through')
     vars[`--${suf}-fs`] = `${s.fontSize}px`
+    vars[`--${suf}-bg`] = bgToCss(s.bg, s.bgAlpha)
     vars[`--${suf}-en-gap`] = `${s.enGap}px`
     vars[`--${suf}-fw`] = s.fontWeight
     vars[`--${suf}-lh`] = s.lineHeight

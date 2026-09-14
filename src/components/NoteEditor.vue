@@ -11,7 +11,7 @@ import {
 import NoteToolbar from "./NoteToolbar.vue";
 import type { ToolbarAction } from "./NoteToolbar.vue";
 import NoteOutline from "./NoteOutline.vue";
-import { useNoteStyles } from "../composables/useNoteStyles";
+import { bgToCss, useNoteStyles } from "../composables/useNoteStyles";
 import type { BlockKind, InlineMark, ToolbarUi } from "../editor/blocks";
 import {
   caretAnchor,
@@ -40,6 +40,7 @@ import {
   setBlockType,
   tidyBlock,
   toggleInlineMark,
+  unwrapHighlightSpans,
   unwrapTypographySpans,
   wrapTypographySpans,
 } from "../editor/blocks";
@@ -57,7 +58,22 @@ import { useToast } from "../composables/useToast";
 const { currentNote, dirty, markDirty, markEdited } = useNotes();
 const { toast } = useToast();
 /** 正文与标题的可视化样式（CSS 变量实时注入 .note-content） */
-const { cssVars, codeStyleClass } = useNoteStyles();
+const { cssVars, codeStyleClass, state: textStyles } = useNoteStyles();
+
+/** 各块（标签名 → 最终底色 CSS 颜色）映射；全透明时为 'transparent'，不会包裹 */
+const bgByTag = computed<Record<string, string>>(() => {
+  const css = (k: keyof typeof textStyles) =>
+    bgToCss(textStyles[k].bg, textStyles[k].bgAlpha);
+  return {
+    P: css("paragraph"),
+    H1: css("h1"),
+    H2: css("h2"),
+    H3: css("h3"),
+    H4: css("h4"),
+    H5: css("h5"),
+    LI: css("paragraph"),
+  };
+});
 
 const titleInput = ref<HTMLInputElement | null>(null);
 const contentEl = ref<HTMLDivElement | null>(null);
@@ -282,7 +298,7 @@ function syncNoteFromDom(): void {
   // 输入法组合期间不动 DOM，避免打断候选词。
   if (!composing) {
     const caret = caretAnchor(el);
-    wrapTypographySpans(el);
+    wrapTypographySpans(el, bgByTag.value);
     if (caret) restoreCaretAnchor(el, caret);
   }
   markEdited();
@@ -317,7 +333,7 @@ function loadContent(): void {
   el.innerHTML = html;
   // 代码块内的换行在编辑期用 <br> 表示（光标行为才可靠），存储仍是换行符
   codeTextToBrDom(el);
-  wrapTypographySpans(el); // 中文片段字距 + 英文单词间隔（只作用于渲染标记）
+  wrapTypographySpans(el, bgByTag.value); // 中文字距 + 英文间隔 + 行内底色（只作用于渲染标记）
   suppressContentWatch = true;
   if (note.content !== html) note.content = html;
   suppressContentWatch = false;
@@ -629,6 +645,7 @@ function onCopy(e: ClipboardEvent): void {
   const box = document.createElement("div");
   box.appendChild(frag);
   unwrapTypographySpans(box); // 复制出去的内容不带排版包裹标记
+  unwrapHighlightSpans(box); // 也不带行内底色标记
   const cleaned = sanitizeHtml(box.innerHTML);
   if (!cleaned) return;
 
@@ -671,6 +688,18 @@ onMounted(() => {
     }
   });
 });
+
+/** 底色配置变化：立刻重排行内底色包裹，并保持光标 */
+watch(
+  () => Object.values(bgByTag.value).join("|"),
+  () => {
+    const el = contentEl.value;
+    if (!el) return;
+    const anchor = caretAnchor(el);
+    wrapTypographySpans(el, bgByTag.value);
+    if (anchor) restoreCaretAnchor(el, anchor);
+  },
+);
 
 onBeforeUnmount(() => {
   window.clearTimeout(syncTimer);

@@ -385,6 +385,7 @@ textarea,
   margin: 0;
 }
 .note-content > p {
+  --hl-bg: var(--p-bg, transparent); /* 行内底色 */
   font-size: var(--p-fs, 16px);
   font-weight: var(--p-fw, 400);
   line-height: var(--p-lh, 1.8);
@@ -395,7 +396,7 @@ textarea,
   --en-gap: var(--p-en-gap, 0px); /* 英文间距：只给正文段落（标题等其它格式不继承） */
   text-align: var(--p-align, left);
   text-indent: var(--p-indent, 0em);
-  margin-bottom: var(--p-mb, 6px);
+  margin-bottom: var(--p-mb, 0px);
 }
 .note-content > p:empty {
   /* 空的占位段落不参与段间距，保持紧凑 */
@@ -404,7 +405,8 @@ textarea,
 
 /* 标题（h1~h5 块；变量由 useNoteStyles 实时注入） */
 .note-content h1 {
-  font-size: var(--h1-fs, 26px);
+  --hl-bg: var(--h1-bg, transparent); /* 行内底色 */
+    font-size: var(--h1-fs, 26px);
   font-weight: var(--h1-fw, 700);
   line-height: var(--h1-lh, 1.4);
   color: var(--h1-color, var(--text-strong));
@@ -416,7 +418,8 @@ textarea,
   margin: 0.9em 0 var(--h1-mb, 10px);
 }
 .note-content h2 {
-  font-size: var(--h2-fs, 22px);
+  --hl-bg: var(--h2-bg, transparent); /* 行内底色 */
+    font-size: var(--h2-fs, 22px);
   font-weight: var(--h2-fw, 650);
   line-height: var(--h2-lh, 1.4);
   color: var(--h2-color, var(--text-strong));
@@ -428,7 +431,8 @@ textarea,
   margin: 0.85em 0 var(--h2-mb, 8px);
 }
 .note-content h3 {
-  font-size: var(--h3-fs, 19px);
+  --hl-bg: var(--h3-bg, transparent); /* 行内底色 */
+    font-size: var(--h3-fs, 19px);
   font-weight: var(--h3-fw, 620);
   line-height: var(--h3-lh, 1.4);
   color: var(--h3-color, var(--text-strong));
@@ -440,7 +444,8 @@ textarea,
   margin: 0.8em 0 var(--h3-mb, 6px);
 }
 .note-content h4 {
-  font-size: var(--h4-fs, 17px);
+  --hl-bg: var(--h4-bg, transparent); /* 行内底色 */
+    font-size: var(--h4-fs, 17px);
   font-weight: var(--h4-fw, 600);
   line-height: var(--h4-lh, 1.45);
   color: var(--h4-color, var(--text-strong));
@@ -452,7 +457,8 @@ textarea,
   margin: 0.8em 0 var(--h4-mb, 5px);
 }
 .note-content h5 {
-  font-size: var(--h5-fs, 15.5px);
+  --hl-bg: var(--h5-bg, transparent); /* 行内底色 */
+    font-size: var(--h5-fs, 15.5px);
   font-weight: var(--h5-fw, 560);
   line-height: var(--h5-lh, 1.5);
   color: var(--h5-color, var(--text-strong));
@@ -463,6 +469,17 @@ textarea,
   text-indent: var(--h5-indent, 0em);
   margin: 0.75em 0 var(--h5-mb, 4px);
 }
+/* 行内底色：只覆盖文字范围（由编辑器的 <span class="hl"> 包裹实现），带圆角与内边距 */
+.note-content .hl {
+  background-color: var(--hl-bg, transparent);
+  border-radius: 5px;
+  /* 上下给足内边距，色块比文字高一些；左右外扩后由负外边距抵消，文字位置不变 */
+  padding: 0.18em 0.34em;
+  margin: 0 -0.34em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone; /* 跨行时每行都保留圆角 */
+}
+
 /* 中文专用字距：只有渲染层包裹的中文片段应用字距，英文/数字/符号不受影响 */
 .note-content .cjk {
   letter-spacing: var(--cjk-ls, 0em);
@@ -587,6 +604,7 @@ textarea,
   list-style: decimal;
 }
 .note-content li {
+  --hl-bg: var(--p-bg, transparent); /* 行内底色 */
   /* 继承正文排版（行高/字号/字距/颜色/对齐等），仅形态上加前缀 */
   font-size: var(--p-fs, 16px);
   font-weight: var(--p-fw, 400);
@@ -597,7 +615,7 @@ textarea,
   --cjk-ls: var(--p-ls, 0.005em); /* 中文专用字距 */
   --en-gap: var(--p-en-gap, 0px); /* 列表项承载正文内容，与正文同样生效 */
   text-align: var(--p-align, left);
-  margin: 0 0 var(--p-mb, 6px);
+  margin: 0 0 var(--p-mb, 0px);
   padding-left: 0.2em;
 }
 .note-content li::marker {
@@ -689,5 +707,13 @@ textarea,
     background: #f7f7f5;
     border: 1px solid var(--border);
     box-shadow: none;
+  }
+}
+
+/* 打印/导出 PDF：保留底色与代码块外观（浏览器默认会丢弃背景色） */
+@media print {
+  .note-content {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }

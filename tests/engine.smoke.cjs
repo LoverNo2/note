@@ -106,25 +106,36 @@ console.log('A. 段落 ↔ 标题切换')
 reset()
 console.log('B. 中文字距 / 英文间隔包裹')
 {
-  const el = editorWith('<p>中文abc中文 (abc) abc,hello</p>')
+  // 夹在中文中的英文：两侧都留间隔
+  const el = editorWith('<p>中文abc中文</p>')
   blocks.wrapTypographySpans(el)
   const p = el.querySelector('p')
-  const latin = Array.from(p.querySelectorAll('span.latin')).map((s) => ({
-    text: s.textContent,
-    cls: s.className,
-  }))
-  assert.deepStrictEqual(latin.map((x) => x.text), ['abc', 'abc)', 'abc,', 'hello'])
-  // 夹在中文之间：两侧都留间隔
-  assert.ok(latin[0].cls.includes('latin--gap-l'))
-  assert.ok(latin[0].cls.includes('latin--gap-r'))
-  // 与 ASCII 标点相连：视为一体，只在与空格/中文相邻的一侧留间隔
-  assert.strictEqual(latin[1].cls.trim(), 'latin latin--gap-r')
-  assert.strictEqual(latin[2].cls.trim(), 'latin latin--gap-l')
-  // 行尾、前接标点：两侧都没有可间隔的对象
-  assert.strictEqual(latin[3].cls.trim(), 'latin')
-  // 包裹不改变文本内容
-  assert.strictEqual(p.textContent, '中文abc中文 (abc) abc,hello')
-  check('B1 英文单词两侧留间隔，与标点相连视为一体', () => {})
+  const abc = p.querySelector('span.latin')
+  assert.ok(abc.classList.contains('latin--gap-l'))
+  assert.ok(abc.classList.contains('latin--gap-r'))
+  assert.strictEqual(p.textContent, '中文abc中文') // 包裹不改变文本
+
+  // 纯英文 / 与 ASCII 标点相邻：视为一体，不留间隔
+  const el2 = editorWith('<p>abc(def)ghi</p>')
+  blocks.wrapTypographySpans(el2)
+  const latin2 = Array.from(el2.querySelectorAll('span.latin'))
+  assert.deepStrictEqual(
+    latin2.map((s) => s.textContent),
+    ['abc', '(', 'def', ')', 'ghi'],
+  )
+  for (const s of latin2) {
+    assert.strictEqual(s.className.trim(), 'latin') // 两侧都是西文 → 无间隔
+  }
+
+  // add_child(主场景实例)：开括号右侧、闭括号左侧都要留间隔
+  const el3 = editorWith('<p>执行 add_child(主场景实例)。</p>')
+  blocks.wrapTypographySpans(el3)
+  const open = Array.from(el3.querySelectorAll('span.latin')).find((s) => s.textContent === '(')
+  const close = Array.from(el3.querySelectorAll('span.latin')).find((s) => s.textContent === ')')
+  assert.ok(open && open.classList.contains('latin--gap-r')) // （ 右边有空隙
+  assert.ok(close && close.classList.contains('latin--gap-l')) // ）左边有空隙
+  assert.ok(close.classList.contains('latin--gap-r')) // ）右边（挨着中文标点）也有空隙
+  check('B1 英文/标点与中文交界的两侧留间隔，与西文相邻视为一体', () => {})
 }
 
 reset()
