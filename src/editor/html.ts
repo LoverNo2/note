@@ -330,7 +330,7 @@ export function normalizeHtml(html: string): string {
   stripForeignStyles(body)
   // 排版包裹标记（中文字距 / 英文间隔）只用于渲染层，不写入存储
   for (const el of Array.from(
-    body.querySelectorAll('span.cjk, span.latin, span.hl'),
+    body.querySelectorAll('span.cjk, span.latin, span.hl, span.token'),
   )) {
     unwrapEl(el)
   }

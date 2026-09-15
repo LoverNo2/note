@@ -321,6 +321,11 @@
   resolved "https://registry.yarnpkg.com/@types/estree/-/estree-1.0.9.tgz#cf3f0e876d7bee15a93ab925b82bf570a3904a24"
   integrity sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==
 
+"@types/prismjs@^1.26.6":
+  version "1.26.6"
+  resolved "https://registry.yarnpkg.com/@types/prismjs/-/prismjs-1.26.6.tgz#6ea27c126d645319ae4f7055eda63a9e835c0187"
+  integrity sha512-vqlvI7qlMvcCBbVe0AKAb4f97//Hy0EBTaiW8AalRnG/xAN5zOiWWyrNqNXeq8+KAuvRewjCVY1+IPxk4RdNYw==
+
 "@vitejs/plugin-vue@^5.1.4":
   version "5.2.4"
   resolved "https://registry.yarnpkg.com/@vitejs/plugin-vue/-/plugin-vue-5.2.4.tgz#9e8a512eb174bfc2a333ba959bbf9de428d89ad8"
@@ -832,6 +837,11 @@ postcss@^8.4.43, postcss@^8.5.19:
     nanoid "^3.3.18"
     picocolors "^1.1.1"
     source-map-js "^1.2.1"
+
+prismjs@^1.30.0:
+  version "1.30.0"
+  resolved "https://registry.yarnpkg.com/prismjs/-/prismjs-1.30.0.tgz#d9709969d9d4e16403f6f348c63553b19f0975a9"
+  integrity sha512-DEvV2ZF2r2/63V+tK8hQvrR2ZGn10srHbXviTlcv7Kpzw8jWiNTqbVgjO3IY8RxrrOUF8VPMQQFysYYYv0YZxw==
 
 psl@^1.1.33:
   version "1.15.0"

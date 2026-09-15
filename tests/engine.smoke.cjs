@@ -146,8 +146,9 @@ console.log('C. 代码块往返')
   blocks.setBlockType(el, 'codeblock')
   const pre = el.firstElementChild
   assert.strictEqual(pre.tagName, 'PRE')
-  // 代码块内的换行：编辑期用 <br> / 换行符表示，文本内容保留换行
-  assert.strictEqual(pre.textContent, '第一行\n第二行')
+  // 代码块内的换行：编辑期 DOM 用 <br> 表示（存储时再转回换行符）
+  assert.strictEqual(pre.textContent, '第一行第二行')
+  assert.strictEqual(pre.querySelectorAll('br').length, 1)
   blocks.placeCaretAtEndOf(pre)
   blocks.setBlockType(el, 'paragraph')
   assert.strictEqual(el.firstElementChild.tagName, 'P')

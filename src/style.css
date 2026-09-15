@@ -516,6 +516,94 @@ textarea,
   color: var(--text-strong);
 }
 
+/* ---------- 代码块语法高亮（Prism token；仅渲染层，不入存储） ---------- */
+.note-content pre .token.comment,
+.note-content pre .token.prolog,
+.note-content pre .token.doctype,
+.note-content pre .token.cdata {
+  color: #7c8494;
+  font-style: italic;
+}
+.note-content pre .token.punctuation {
+  color: #5b6472;
+}
+.note-content pre .token.keyword,
+.note-content pre .token.control,
+.note-content pre .token.directive,
+.note-content pre .token.atrule {
+  color: #cf222e;
+  font-weight: 600;
+}
+.note-content pre .token.string,
+.note-content pre .token.char,
+.note-content pre .token.attr-value,
+.note-content pre .token.inserted {
+  color: #0a7c5a;
+}
+.note-content pre .token.number,
+.note-content pre .token.boolean,
+.note-content pre .token.constant {
+  color: #0550ae;
+}
+.note-content pre .token.function,
+.note-content pre .token.method {
+  color: #7c3aed;
+}
+.note-content pre .token.class-name,
+.note-content pre .token.builtin,
+.note-content pre .token.regex,
+.note-content pre .token.important {
+  color: #b45309;
+}
+.note-content pre .token.property,
+.note-content pre .token.tag,
+.note-content pre .token.symbol,
+.note-content pre .token.attr-name,
+.note-content pre .token.selector {
+  color: #0b6bcb;
+}
+.note-content pre .token.operator,
+.note-content pre .token.entity,
+.note-content pre .token.url {
+  color: #4b5563;
+}
+.note-content pre .token.deleted {
+  color: #cf222e;
+}
+
+/* 深色终端外观下换一套配色 */
+.note-content.code-c pre .token.comment {
+  color: #8b949e;
+}
+.note-content.code-c pre .token.punctuation {
+  color: #c9d1d9;
+}
+.note-content.code-c pre .token.keyword {
+  color: #ff7b72;
+}
+.note-content.code-c pre .token.string,
+.note-content.code-c pre .token.attr-value {
+  color: #a5d6ff;
+}
+.note-content.code-c pre .token.number,
+.note-content.code-c pre .token.boolean,
+.note-content.code-c pre .token.constant {
+  color: #79c0ff;
+}
+.note-content.code-c pre .token.function,
+.note-content.code-c pre .token.method {
+  color: #d2a8ff;
+}
+.note-content.code-c pre .token.class-name,
+.note-content.code-c pre .token.builtin {
+  color: #ffa657;
+}
+.note-content.code-c pre .token.property,
+.note-content.code-c pre .token.tag,
+.note-content.code-c pre .token.attr-name {
+  color: #7ee787;
+}
+
 /* ---------- 代码块外观预设（样式配置窗口「代码块」页签） ---------- */
 /* 经典：浅灰底 + 1px 细边框 */
 .note-content.code-now pre {

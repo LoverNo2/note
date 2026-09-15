@@ -13,6 +13,17 @@ import type { ToolbarAction } from "./NoteToolbar.vue";
 import NoteOutline from "./NoteOutline.vue";
 import { bgToCss, useNoteStyles } from "../composables/useNoteStyles";
 import type { BlockKind, InlineMark, ToolbarUi } from "../editor/blocks";
+import { highlightCodeBlocks } from "../editor/highlight";
+
+/** 去掉代码高亮标记（复制出去的内容保持纯代码） */
+function unwrapTokenSpans(root: HTMLElement): void {
+  for (const el of Array.from(root.querySelectorAll("span.token"))) {
+    const parent = el.parentNode;
+    if (!parent) continue;
+    while (el.firstChild) parent.insertBefore(el.firstChild, el);
+    el.remove();
+  }
+}
 import {
   caretAnchor,
   caretTextIndex,
@@ -122,6 +133,7 @@ function refreshOutline(): void {
 let outlineTimer: number | undefined;
 function scheduleOutline(): void {
   window.clearTimeout(outlineTimer);
+  window.clearTimeout(highlightTimer);
   outlineTimer = window.setTimeout(refreshOutline, 250);
 }
 
@@ -334,6 +346,7 @@ function loadContent(): void {
   // 代码块内的换行在编辑期用 <br> 表示（光标行为才可靠），存储仍是换行符
   codeTextToBrDom(el);
   wrapTypographySpans(el, bgByTag.value); // 中文字距 + 英文间隔 + 行内底色（只作用于渲染标记）
+  highlightCodeBlocks(el); // 代码块语法高亮（只作用于渲染标记）
   suppressContentWatch = true;
   if (note.content !== html) note.content = html;
   suppressContentWatch = false;
@@ -345,6 +358,21 @@ function loadContent(): void {
 }
 
 /** 输入防抖：停顿后同步数据 + 记一次快照 */
+/** 代码高亮：输入停顿后只重排光标所在的代码块 */
+let highlightTimer = 0;
+function scheduleHighlight(): void {
+  window.clearTimeout(highlightTimer);
+  highlightTimer = window.setTimeout(() => {
+    const el = contentEl.value;
+    if (!el || composing) return;
+    const block = resolveBlock(el);
+    if (!block || block.tagName !== "PRE") return;
+    const caret = caretAnchor(el);
+    highlightCodeBlocks(el, block);
+    if (caret) restoreCaretAnchor(el, caret);
+  }, 350);
+}
+
 function scheduleSync(): void {
   window.clearTimeout(syncTimer);
   syncTimer = window.setTimeout(() => {
@@ -646,6 +674,7 @@ function onCopy(e: ClipboardEvent): void {
   box.appendChild(frag);
   unwrapTypographySpans(box); // 复制出去的内容不带排版包裹标记
   unwrapHighlightSpans(box); // 也不带行内底色标记
+  unwrapTokenSpans(box); // 也不带代码高亮标记
   const cleaned = sanitizeHtml(box.innerHTML);
   if (!cleaned) return;
 
@@ -666,6 +695,7 @@ function onContentInput(): void {
   }
   scheduleSync();
   scheduleOutline();
+  scheduleHighlight();
   updateEmptyClass();
   markDirty();
 }

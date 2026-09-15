@@ -122,19 +122,24 @@ export function caretAnchor(editor: HTMLElement): CaretAnchor | null {
   const block = top as HTMLElement
   const blockIndex = Array.from(editor.children).indexOf(block)
   if (blockIndex < 0) return null
+  // 用 Range 取「块首 → 光标」的文本长度：这样光标落在元素边界（如块末尾）
+  // 时也能算出正确的偏移，不会退化成 0 而被当成块首。零宽锚点不计入。
+  const range = document.createRange()
+  try {
+    range.setStart(block, 0)
+    range.setEnd(sel.anchorNode, sel.anchorOffset)
+  } catch {
+    return { block: blockIndex, offset: 0 }
+  }
+  const frag = range.cloneContents()
   let offset = 0
-  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT)
+  const walker = document.createTreeWalker(frag, NodeFilter.SHOW_TEXT)
   let n: Node | null = walker.nextNode()
   while (n) {
-    if (n === sel.anchorNode) {
-      offset += sel.anchorOffset
-      return { block: blockIndex, offset }
-    }
-    offset += (n.textContent ?? '').length
+    offset += (n.textContent ?? '').replace(/\u200b/g, '').length
     n = walker.nextNode()
   }
-  // 光标落在块本身或空块（块内没有文本节点）：偏移记为 0
-  return { block: blockIndex, offset: 0 }
+  return { block: blockIndex, offset }
 }
 
 export function restoreCaretAnchor(editor: HTMLElement, anchor: CaretAnchor): void {
@@ -540,6 +545,8 @@ export function setBlockType(editor: HTMLElement, kind: BlockKind): void {
     const many = selectedBlocks(editor)
     if (many) {
       const pre = mergeBlocksToCode(many)
+      // 与其它路径一致：换行 → <br>，末尾换行补光标锚点
+      codeTextToBrDom(editor)
       const code = pre.firstElementChild as HTMLElement | null
       if (code) placeCaretAtStartOf(code)
       return
@@ -623,6 +630,8 @@ export function setBlockType(editor: HTMLElement, kind: BlockKind): void {
           }
         }
         const pre = wrapAsCode(block)
+        // 换行符 → <br>，末尾换行补光标锚点（与粘贴/加载路径保持一致）
+        codeTextToBrDom(editor)
         const code =
           (pre.firstElementChild as HTMLElement | null) ??
           (() => {
@@ -810,11 +819,17 @@ export function codeTextToBrDom(editor: HTMLElement): void {
     const text = code.textContent ?? ''
     if (!text.includes('\n') && !text.includes(CODE_ANCHOR)) continue
     const lines = text.split('\n')
+    const endsWithNewline = lines[lines.length - 1] === ''
     code.replaceChildren()
     lines.forEach((line, i) => {
       if (i > 0) code.appendChild(document.createElement('br'))
       if (line) code.appendChild(document.createTextNode(line))
     })
+    // 以换行结尾：末尾的 <br> 需要一个可见的落脚点，
+    // 否则该空行不显示、光标会落在代码块末尾之外（表现为“偏移”）
+    if (endsWithNewline) {
+      code.appendChild(document.createTextNode(CODE_ANCHOR))
+    }
   }
 }
 
@@ -1378,16 +1393,22 @@ function wrapTokensInTextNode(text: Text): void {
     const token = typographyTokens(current.data)[0]
     if (!token) break
     const data = current.data
-    const before =
+    const rawBefore =
       token.start > 0 ? data.charAt(token.start - 1) : charBefore(current)
     const after =
       token.end < data.length ? data.charAt(token.end) : charAfter(current)
+    // 行首（含软换行后的行首）：charBefore 会看到“上一行的末尾字符”，
+    // 若据此加间隔，就会让这些行整行缩进一小段。列表项内部统一留出间隔，
+    // 这样首行与后续行的内容都与列表标记保持同样距离；其它块的行首不留。
+    const atLineStart = rawBefore === null
+    const inListItem = !!current.parentElement?.closest('li')
+    const needLeft = atLineStart ? inListItem : needsEnGap(rawBefore)
     const tail = current.splitText(token.end)
     const node = current.splitText(token.start)
     const span = document.createElement('span')
     span.className = token.kind === 'cjk' ? CJK_CLASS : LATIN_CLASS
     if (token.kind === 'latin') {
-      if (needsEnGap(before)) span.classList.add('latin--gap-l')
+      if (needLeft) span.classList.add('latin--gap-l')
       if (needsEnGap(after)) span.classList.add('latin--gap-r')
     }
     span.appendChild(node)
