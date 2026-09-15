@@ -86,6 +86,24 @@ const demoCode = `// 每帧执行的核心函数
 double delta = (ticks - last) / 1000000.0;
 if (main_loop) main_loop->iteration(delta);`;
 
+/* ---------------- 表格外观（随方案保存） ---------------- */
+
+function snapshotTable() {
+  return { borderColor: tableStyle.value.borderColor, headerBg: tableStyle.value.headerBg };
+}
+
+/** 当前方案里已保存的表格外观；默认样式下没有“已保存”概念 → null */
+function savedTable() {
+  return savedSnapOfActive()?.table ?? null;
+}
+
+/** 应用某个方案记录的表格外观（旧方案没记录时按内置默认） */
+function applySnapshotTable(src?: { borderColor: string; headerBg: string }): void {
+  tableStyle.value = src
+    ? { borderColor: src.borderColor, headerBg: src.headerBg }
+    : { ...TABLE_STYLE_DEFAULTS };
+}
+
 /* ---------------- 单项目撤销（相对最近一次保存） ---------------- */
 
 /** 当前激活自定义样式的最近一次保存记录 */
@@ -180,6 +198,8 @@ interface StyleSnapshot {
   name: string;
   savedAt: string;
   styles: Record<TextBlockKey, TextBlockStyle>;
+  /** 表格外观（边框色 / 表头底色）：随样式方案一起保存与切换 */
+  table?: { borderColor: string; headerBg: string };
 }
 
 const SNAPSHOTS_KEY = "notebook:textStyles:snapshots:v1";
@@ -243,6 +263,7 @@ function upsertSnap(name: string): boolean {
     name,
     savedAt: new Date().toISOString(),
     styles: cloneState(),
+    table: snapshotTable(),
   };
   const idx = snapList.value.findIndex((s) => s.name === name);
   if (idx >= 0) snapList.value[idx] = snap;
@@ -270,7 +291,11 @@ const dirty = computed(() => {
   if (!name) return false;
   const snap = snapList.value.find((s) => s.name === name);
   if (!snap) return false;
-  return JSON.stringify(snap.styles) !== JSON.stringify(cloneState());
+  if (JSON.stringify(snap.styles) !== JSON.stringify(cloneState())) return true;
+  // 表格外观也属于该方案：它变了同样算“有未保存改动”（旧方案没记录时按内置默认比）
+  const saved = snap.table ?? TABLE_STYLE_DEFAULTS;
+  const cur = snapshotTable();
+  return saved.borderColor !== cur.borderColor || saved.headerBg !== cur.headerBg;
 });
 
 /** 底色：'transparent' 表示无底色；色板需要 hex，所以无底色时以纯白起步 */
@@ -304,6 +329,7 @@ function applyDefaultStyle(): void {
   naming.value = false;
   customActive.value = null;
   restoreState(defaults);
+  tableStyle.value = { ...TABLE_STYLE_DEFAULTS };
   pickerOpen.value = false;
   deletingName.value = null;
   toast("已切换到默认样式", "success");
@@ -314,6 +340,7 @@ function applySnapshot(snap: StyleSnapshot): void {
   naming.value = false;
   customActive.value = snap.name;
   restoreState(snap.styles);
+  applySnapshotTable(snap.table);
   pickerOpen.value = false;
   deletingName.value = null;
   toast(`已切换到「${snap.name}」`, "success");
@@ -330,6 +357,7 @@ function confirmDeleteStyle(snap: StyleSnapshot): void {
     customActive.value = null;
     naming.value = false;
     restoreState(defaults);
+    tableStyle.value = { ...TABLE_STYLE_DEFAULTS };
   }
   deletingName.value = null;
   toast(`已删除配置「${snap.name}」`, "success");
@@ -340,6 +368,7 @@ function createNewStyle(): void {
   pickerOpen.value = false;
   deletingName.value = null;
   restoreState(defaults);
+  tableStyle.value = { ...TABLE_STYLE_DEFAULTS }; // 新样式从默认表格外观起步
   naming.value = true;
   customActive.value = null;
   nameDraft.value = "";
@@ -354,6 +383,7 @@ function cancelNaming(): void {
   nameDraft.value = "";
   customActive.value = null;
   restoreState(defaults);
+  tableStyle.value = { ...TABLE_STYLE_DEFAULTS };
 }
 
 /** 在名称输入框回车：保存命名并激活该样式 */
@@ -385,6 +415,7 @@ function resetCurrent(): void {
   const snap = snapList.value.find((s) => s.name === name);
   if (!snap) return;
   restoreState(snap.styles);
+  applySnapshotTable(snap.table);
   toast(`已回到「${name}」上次保存的状态`, "success");
 }
 
@@ -406,6 +437,20 @@ function fmtTime(iso: string): string {
   } catch {
     return "";
   }
+}
+
+/** 表格外观项是否有未保存改动（与文字配置同一套判断：一致则隐藏 ↺） */
+function tableFieldDirty(field: "borderColor" | "headerBg"): boolean {
+  if (!customActive.value) return false; // 默认样式：没有“已保存”概念
+  const saved = savedTable() ?? TABLE_STYLE_DEFAULTS;
+  return tableStyle.value[field] !== saved[field];
+}
+
+/** 撤回表格外观该项的改动，回到该方案上次保存的值（旧方案回内置默认） */
+function resetTableField(field: "borderColor" | "headerBg"): void {
+  if (!customActive.value) return;
+  const saved = savedTable() ?? TABLE_STYLE_DEFAULTS;
+  tableStyle.value[field] = saved[field];
 }
 
 function toggle(): void {
@@ -969,8 +1014,6 @@ onBeforeUnmount(() => {
 
         <!-- 表格外观：边框色 / 表头底色（全局共用，作用于所有表格） -->
         <fieldset v-else-if="panelTab === 'table'" class="ss__body">
-          <p class="tb-tip">表格外观对所有笔记里的表格生效。</p>
-
           <div class="f-row">
             <span class="f-label">边框色</span>
             <input
@@ -982,9 +1025,11 @@ onBeforeUnmount(() => {
             <span class="f-val f-val--mono">{{ tableStyle.borderColor }}</span>
             <button
               class="f-reset"
-              :class="{ off: tableStyle.borderColor === TABLE_STYLE_DEFAULTS.borderColor }"
-              title="恢复边框色默认"
-              @click="tableStyle.borderColor = TABLE_STYLE_DEFAULTS.borderColor"
+              :class="{
+                off: !tableFieldDirty('borderColor'),
+              }"
+              title="撤回边框色改动"
+              @click="resetTableField('borderColor')"
             >
               ↺
             </button>
@@ -1001,33 +1046,14 @@ onBeforeUnmount(() => {
             <span class="f-val f-val--mono">{{ tableStyle.headerBg }}</span>
             <button
               class="f-reset"
-              :class="{ off: tableStyle.headerBg === TABLE_STYLE_DEFAULTS.headerBg }"
-              title="恢复表头底色默认"
-              @click="tableStyle.headerBg = TABLE_STYLE_DEFAULTS.headerBg"
+              :class="{
+                off: !tableFieldDirty('headerBg'),
+              }"
+              title="撤回表头底色改动"
+              @click="resetTableField('headerBg')"
             >
               ↺
             </button>
-          </div>
-
-          <div
-            class="tb-preview note-content"
-            :style="{
-              '--table-border': tableStyle.borderColor,
-              '--table-head-bg': tableStyle.headerBg,
-            }"
-          >
-            <table>
-              <tbody>
-                <tr>
-                  <th>表头</th>
-                  <th>表头</th>
-                </tr>
-                <tr>
-                  <td>单元格</td>
-                  <td>单元格</td>
-                </tr>
-              </tbody>
-            </table>
           </div>
         </fieldset>
 
@@ -1062,22 +1088,6 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-/* ============ 表格页签 ============ */
-.tb-tip {
-  margin: 0 0 10px;
-  font-size: 11.5px;
-  line-height: 1.6;
-  color: var(--text-faint);
-}
-.tb-preview {
-  margin-top: 12px;
-  padding: 10px;
-  border-radius: 10px;
-  background: var(--bg-canvas);
-  box-shadow: var(--neu-sink-sm);
-  pointer-events: none;
-}
-
 /* ============ 入口按钮（位于 AppBar 右侧） ============ */
 .ss {
   position: relative;

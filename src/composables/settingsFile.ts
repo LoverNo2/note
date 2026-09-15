@@ -18,6 +18,7 @@ const SYNCED_KEYS = [
   'notebook:textStyles:v1',
   'notebook:textStyles:snapshots:v1',
   'notebook:codeBlockStyle:v1',
+  'notebook:tableStyle:v1',
   'notebook:fonts:v1',
   // 迁移标记也一并同步，避免换机器后重复触发一次性迁移
   'notebook:textStyles:segGapMigrated',
