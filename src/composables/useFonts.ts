@@ -1,4 +1,5 @@
 import { reactive } from 'vue'
+import { markSettingsDirty } from './settingsFile'
 
 /**
  * 字体管理：自动扫描 asset/fonts/ 下的字体包，注入 @font-face，
@@ -138,6 +139,7 @@ function applyFontVars(): void {
 function persist(): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...selected }))
+    markSettingsDirty() // 同步到项目文件
   } catch {
     /* 忽略写入失败 */
   }

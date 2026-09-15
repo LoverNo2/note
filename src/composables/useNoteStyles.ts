@@ -1,4 +1,5 @@
 import { computed, reactive, ref, watch } from 'vue'
+import { markSettingsDirty } from './settingsFile'
 
 /**
  * 正文与标题（paragraph / h1 / h2 / h3）的可视化样式配置。
@@ -150,6 +151,7 @@ const codeStyle = ref<CodeBlockStyleKey>(loadCodeStyle())
 watch(codeStyle, (v) => {
   try {
     localStorage.setItem(CODE_BLOCK_STORAGE_KEY, v)
+    markSettingsDirty()
   } catch {
     /* 存储不可用时忽略 */
   }
@@ -284,6 +286,7 @@ watch(
   (val) => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(val))
+      markSettingsDirty() // 同步到项目文件（随 git 一起走）
     } catch {
       /* 存储不可用时忽略 */
     }

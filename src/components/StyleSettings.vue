@@ -6,6 +6,7 @@ import {
   type TextBlockStyle,
 } from "../composables/useNoteStyles";
 import { useToast } from "../composables/useToast";
+import { markSettingsDirty } from "../composables/settingsFile";
 
 const {
   state,
@@ -213,6 +214,7 @@ function readSnapshots(): StyleSnapshot[] {
 function persistSnapshots(list: StyleSnapshot[]): void {
   try {
     localStorage.setItem(SNAPSHOTS_KEY, JSON.stringify(list));
+    markSettingsDirty(); // 同步到项目文件
   } catch {
     /* 忽略写入失败 */
   }
