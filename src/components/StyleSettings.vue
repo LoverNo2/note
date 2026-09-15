@@ -13,6 +13,8 @@ const {
   defaults,
   codeStyle,
   codeStyles: CODE_BLOCK_STYLES,
+  tableStyle,
+  tableStyleDefaults: TABLE_STYLE_DEFAULTS,
 } = useNoteStyles();
 const { toast } = useToast();
 
@@ -72,7 +74,7 @@ const rootEl = ref<HTMLElement | null>(null);
 const activeKey = ref<TextBlockKey>("paragraph");
 
 /** 面板当前页签：块样式 或 代码块外观 */
-const panelTab = ref<"block" | "code">("block");
+const panelTab = ref<"block" | "code" | "table">("block");
 
 function selectBlockTab(key: TextBlockKey): void {
   panelTab.value = "block";
@@ -627,6 +629,15 @@ onBeforeUnmount(() => {
           >
             代码块
           </button>
+          <button
+            class="ss__tab"
+            role="tab"
+            :class="{ active: panelTab === 'table' }"
+            :aria-selected="panelTab === 'table'"
+            @click="panelTab = 'table'"
+          >
+            表格
+          </button>
         </nav>
 
         <!-- 当前块配置 -->
@@ -956,8 +967,72 @@ onBeforeUnmount(() => {
           </div>
         </fieldset>
 
+        <!-- 表格外观：边框色 / 表头底色（全局共用，作用于所有表格） -->
+        <fieldset v-else-if="panelTab === 'table'" class="ss__body">
+          <p class="tb-tip">表格外观对所有笔记里的表格生效。</p>
+
+          <div class="f-row">
+            <span class="f-label">边框色</span>
+            <input
+              v-model="tableStyle.borderColor"
+              class="c-swatch"
+              type="color"
+              title="点击选择表格线颜色"
+            />
+            <span class="f-val f-val--mono">{{ tableStyle.borderColor }}</span>
+            <button
+              class="f-reset"
+              :class="{ off: tableStyle.borderColor === TABLE_STYLE_DEFAULTS.borderColor }"
+              title="恢复边框色默认"
+              @click="tableStyle.borderColor = TABLE_STYLE_DEFAULTS.borderColor"
+            >
+              ↺
+            </button>
+          </div>
+
+          <div class="f-row">
+            <span class="f-label">表头底色</span>
+            <input
+              v-model="tableStyle.headerBg"
+              class="c-swatch"
+              type="color"
+              title="点击选择表头（首行）底色"
+            />
+            <span class="f-val f-val--mono">{{ tableStyle.headerBg }}</span>
+            <button
+              class="f-reset"
+              :class="{ off: tableStyle.headerBg === TABLE_STYLE_DEFAULTS.headerBg }"
+              title="恢复表头底色默认"
+              @click="tableStyle.headerBg = TABLE_STYLE_DEFAULTS.headerBg"
+            >
+              ↺
+            </button>
+          </div>
+
+          <div
+            class="tb-preview note-content"
+            :style="{
+              '--table-border': tableStyle.borderColor,
+              '--table-head-bg': tableStyle.headerBg,
+            }"
+          >
+            <table>
+              <tbody>
+                <tr>
+                  <th>表头</th>
+                  <th>表头</th>
+                </tr>
+                <tr>
+                  <td>单元格</td>
+                  <td>单元格</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </fieldset>
+
         <!-- 代码块外观：5 套预设（只影响代码块，不影响正文） -->
-        <div v-else class="ss__body cb-grid">
+        <div v-else-if="panelTab === 'code'" class="ss__body cb-grid">
           <p class="cb-tip">选择代码块的显示外观，仅作用于代码块。</p>
           <button
             v-for="opt in CODE_BLOCK_STYLES"
@@ -987,6 +1062,22 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+/* ============ 表格页签 ============ */
+.tb-tip {
+  margin: 0 0 10px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-faint);
+}
+.tb-preview {
+  margin-top: 12px;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--bg-canvas);
+  box-shadow: var(--neu-sink-sm);
+  pointer-events: none;
+}
+
 /* ============ 入口按钮（位于 AppBar 右侧） ============ */
 .ss {
   position: relative;

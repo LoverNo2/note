@@ -269,5 +269,363 @@ console.log('G. 选中多段合并为代码块')
   check('G1 选中多个段落合并为一个代码块', () => {})
 }
 
+reset()
+console.log('I. 代码块行注释切换（⌘/）')
+{
+  // 单行：光标所在行加/去注释
+  const el = editorWith('<pre><code>const a = 1<br>const b = 2</code></pre>')
+  const code = el.querySelector('code')
+  const line2 = code.childNodes[2] // 第二行文本节点
+  const r = document.createRange()
+  r.setStart(line2, 3)
+  r.collapse(true)
+  const sel = window.getSelection()
+  sel.removeAllRanges()
+  sel.addRange(r)
+
+  assert.strictEqual(blocks.toggleCodeComment(el), true)
+  // 用 DOM 逐行读：<br> 分行
+  const readLines = (pre) => {
+    const out = ['']
+    for (const n of Array.from(pre.querySelector('code').childNodes)) {
+      if (n.tagName === 'BR') out.push('')
+      else out[out.length - 1] += (n.textContent ?? '').replace(/\u200b/g, '')
+    }
+    return out
+  }
+  const after = readLines(el.querySelector('pre'))
+  assert.deepStrictEqual(after, ['const a = 1', '// const b = 2'])
+  // 再切一次 → 还原
+  assert.strictEqual(blocks.toggleCodeComment(el), true)
+  assert.deepStrictEqual(readLines(el.querySelector('pre')), ['const a = 1', 'const b = 2'])
+  check('I1 单行注释可加可去', () => {})
+}
+{
+  // 多行 + 缩进保留
+  const el = editorWith('<pre><code>function f() {<br>  return 1<br>}</code></pre>')
+  const code = el.querySelector('code')
+  const r = document.createRange()
+  r.setStart(code.firstChild, 0)
+  r.setEnd(code.lastChild, 1)
+  const sel = window.getSelection()
+  sel.removeAllRanges()
+  sel.addRange(r)
+  const readLines = (pre) => {
+    const out = ['']
+    for (const n of Array.from(pre.querySelector('code').childNodes)) {
+      if (n.tagName === 'BR') out.push('')
+      else out[out.length - 1] += (n.textContent ?? '').replace(/\u200b/g, '')
+    }
+    return out
+  }
+  blocks.toggleCodeComment(el)
+  assert.deepStrictEqual(readLines(el.querySelector('pre')), [
+    '// function f() {',
+    '  // return 1',
+    '// }',
+  ])
+  // 重新选中三行再切换 → 全部取消
+  const code2 = el.querySelector('code')
+  const texts = Array.from(code2.childNodes).filter((n) => n.nodeType === 3)
+  const r2 = document.createRange()
+  r2.setStart(texts[0], 0)
+  r2.setEnd(texts[texts.length - 1], (texts[texts.length - 1].textContent ?? '').length)
+  sel.removeAllRanges()
+  sel.addRange(r2)
+  blocks.toggleCodeComment(el)
+  assert.deepStrictEqual(readLines(el.querySelector('pre')), [
+    'function f() {',
+    '  return 1',
+    '}',
+  ])
+  check('I2 多行注释、缩进保留、可整体取消', () => {})
+}
+{
+  // 正文里不应生效
+  const el = editorWith('<p>正文</p>')
+  const tn = el.querySelector('p').firstChild
+  const r = document.createRange()
+  r.setStart(tn, 1)
+  r.collapse(true)
+  const sel = window.getSelection()
+  sel.removeAllRanges()
+  sel.addRange(r)
+  assert.strictEqual(blocks.toggleCodeComment(el), false)
+  assert.strictEqual(el.querySelector('p').textContent, '正文')
+  check('I3 正文中按 ⌘/ 不生效', () => {})
+}
+
+reset()
+console.log('J. 光标锚点区分“行首”与“上一行末尾”')
+{
+  const el = editorWith('<pre><code>a<br>b</code></pre>')
+  const code = el.querySelector('code')
+  const br = code.childNodes[1]
+  const sel = window.getSelection()
+  // 第 1 行末尾（换行之前）
+  let r = document.createRange()
+  r.setStart(code.firstChild, 1)
+  r.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(r)
+  const atLine1End = blocks.caretAnchor(el)
+  // 第 2 行行首（换行之后）
+  r = document.createRange()
+  r.setStartAfter(br)
+  r.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(r)
+  const atLine2Start = blocks.caretAnchor(el)
+
+  assert.strictEqual(atLine1End.offset, 1)
+  assert.strictEqual(atLine2Start.offset, 2) // <br> 计 1
+  assert.notStrictEqual(atLine1End.offset, atLine2Start.offset)
+  // 往返恢复后仍在第 2 行行首
+  blocks.restoreCaretAnchor(el, atLine2Start)
+  assert.strictEqual(blocks.caretAnchor(el).offset, 2)
+  check('J1 代码块内行首与上一行末尾锚点不同、可精确恢复', () => {})
+}
+{
+  // 空行（第 2 行）行首也要能精确往返
+  const el = editorWith('<pre><code>a<br><br>b</code></pre>')
+  const code = el.querySelector('code')
+  const sel = window.getSelection()
+  const r = document.createRange()
+  r.setStartAfter(code.childNodes[1])
+  r.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(r)
+  const anchor = blocks.caretAnchor(el)
+  assert.strictEqual(anchor.offset, 2)
+  blocks.restoreCaretAnchor(el, anchor)
+  assert.strictEqual(blocks.caretAnchor(el).offset, 2)
+  check('J2 空行行首的光标可精确往返', () => {})
+}
+
+reset()
+console.log('K. 表格')
+{
+  const el = editorWith('<p>前</p>')
+  const tn = el.querySelector('p').firstChild
+  const r = document.createRange()
+  r.setStart(tn, 1)
+  r.collapse(true)
+  const sel = window.getSelection()
+  sel.removeAllRanges()
+  sel.addRange(r)
+  assert.strictEqual(blocks.insertTable(el, 3, 2), true)
+  const table = el.querySelector('table')
+  assert.ok(table, '应插入表格')
+  const rows = table.querySelectorAll('tr')
+  assert.strictEqual(rows.length, 3)
+  assert.strictEqual(rows[0].querySelectorAll('th').length, 2, '首行应为表头 th')
+  assert.strictEqual(rows[1].querySelectorAll('td').length, 2)
+  assert.strictEqual(rows[1].querySelectorAll('td')[0].querySelector('br') !== null, true, '空单元格要有落脚点')
+  // 表格后应留一个空段落
+  assert.strictEqual(el.lastElementChild.tagName, 'P')
+  // 光标进入第一个单元格
+  const ctx = blocks.tableContext(el)
+  assert.strictEqual(ctx.rowIndex, 0)
+  assert.strictEqual(ctx.colIndex, 0)
+  check('K1 插入 3×2 表格：结构、落脚点、光标到位', () => {})
+}
+{
+  const el = editorWith('<p>x</p>')
+  const tn = el.querySelector('p').firstChild
+  const sel = window.getSelection()
+  const r = document.createRange()
+  r.setStart(tn, 1)
+  r.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(r)
+  blocks.insertTable(el, 3, 2)
+  // Enter：到下一行同列
+  blocks.tableEnterNext(el)
+  let ctx = blocks.tableContext(el)
+  assert.strictEqual(ctx.rowIndex, 1)
+  assert.strictEqual(ctx.colIndex, 0)
+  blocks.tableEnterNext(el)
+  ctx = blocks.tableContext(el)
+  assert.strictEqual(ctx.rowIndex, 2)
+  // 末行再 Enter → 新建一行
+  blocks.tableEnterNext(el)
+  ctx = blocks.tableContext(el)
+  assert.strictEqual(el.querySelectorAll('tr').length, 4)
+  assert.strictEqual(ctx.rowIndex, 3)
+  assert.strictEqual(ctx.colIndex, 0)
+  // 新行的单元格应是 td
+  assert.strictEqual(el.querySelectorAll('tr')[3].querySelectorAll('td').length, 2)
+  check('K2 Enter 下一行同列，末行新增一行', () => {})
+}
+{
+  const el = editorWith('<p>x</p>')
+  const tn = el.querySelector('p').firstChild
+  const sel = window.getSelection()
+  const r = document.createRange()
+  r.setStart(tn, 1)
+  r.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(r)
+  blocks.insertTable(el, 2, 2)
+  // Tab → 右移一格
+  blocks.tableMoveCell(el)
+  let ctx = blocks.tableContext(el)
+  assert.strictEqual(ctx.rowIndex, 0)
+  assert.strictEqual(ctx.colIndex, 1)
+  // Shift+Tab → 回退
+  blocks.tableMoveCell(el, true)
+  ctx = blocks.tableContext(el)
+  assert.strictEqual(ctx.colIndex, 0)
+  // 走到最后一个单元格再 Tab → 新建一行
+  blocks.tableMoveCell(el) // (0,1)
+  blocks.tableMoveCell(el) // (1,0)
+  blocks.tableMoveCell(el) // (1,1) 最后一个
+  blocks.tableMoveCell(el) // 新建行
+  ctx = blocks.tableContext(el)
+  assert.strictEqual(el.querySelectorAll('tr').length, 3)
+  assert.strictEqual(ctx.rowIndex, 2)
+  assert.strictEqual(ctx.colIndex, 0)
+  check('K3 Tab 移动单元格，末格新建一行', () => {})
+}
+{
+  const el = editorWith('<p>x</p>')
+  const tn = el.querySelector('p').firstChild
+  const sel = window.getSelection()
+  const r = document.createRange()
+  r.setStart(tn, 1)
+  r.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(r)
+  blocks.insertTable(el, 3, 2)
+  const table = el.querySelector('table')
+  // 在当前行（第 1 行）下方插行
+  assert.strictEqual(blocks.insertTableRow(el, 'below'), true)
+  assert.strictEqual(table.querySelectorAll('tr').length, 4)
+  // 上方插行（光标已在新行第 1 行下方 → 也就是第 2 行）
+  blocks.insertTableRow(el, 'above')
+  assert.strictEqual(table.querySelectorAll('tr').length, 5)
+  // 删除当前行
+  assert.strictEqual(blocks.deleteTableRow(el), true)
+  assert.strictEqual(table.querySelectorAll('tr').length, 4)
+  // 列：插入 / 删除
+  assert.strictEqual(blocks.insertTableColumn(el, 'right'), true)
+  assert.strictEqual(table.querySelectorAll('tr')[0].querySelectorAll('th, td').length, 3)
+  assert.strictEqual(blocks.deleteTableColumn(el), true)
+  assert.strictEqual(table.querySelectorAll('tr')[0].querySelectorAll('th, td').length, 2)
+  check('K4 增删行列', () => {})
+}
+{
+  const el = editorWith('<p>x</p>')
+  const tn = el.querySelector('p').firstChild
+  const sel = window.getSelection()
+  const r = document.createRange()
+  r.setStart(tn, 1)
+  r.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(r)
+  blocks.insertTable(el, 2, 2)
+  assert.strictEqual(blocks.deleteTable(el), true)
+  assert.strictEqual(el.querySelector('table'), null)
+  // 删表后光标应落在段落里
+  const block = blocks.resolveBlock(el)
+  assert.strictEqual(block.tagName, 'P')
+  // 只剩一行时删行 = 删整表
+  const el2 = editorWith('<table><tbody><tr><td><br></td></tr></tbody></table><p>尾</p>')
+  const cell = el2.querySelector('td')
+  const r2 = document.createRange()
+  r2.setStart(cell, 0)
+  r2.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(r2)
+  blocks.deleteTableRow(el2)
+  assert.strictEqual(el2.querySelector('table'), null)
+  check('K5 删除整表（含仅一行时删行等价删表）', () => {})
+}
+{
+  // 单元格边界与换行一样占偏移：td1 末尾 ≠ td2 开头
+  const el = editorWith('<table><tbody><tr><td>甲</td><td>乙</td></tr></tbody></table>')
+  const tds = el.querySelectorAll('td')
+  const sel = window.getSelection()
+  const r = document.createRange()
+  r.setStart(tds[0].firstChild, 1)
+  r.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(r)
+  const atEndOfCell1 = blocks.caretAnchor(el)
+  const r2 = document.createRange()
+  r2.setStart(tds[1], 0)
+  r2.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(r2)
+  const atStartOfCell2 = blocks.caretAnchor(el)
+  assert.notStrictEqual(atEndOfCell1.offset, atStartOfCell2.offset)
+  // 往返恢复后仍在第 2 格
+  blocks.restoreCaretAnchor(el, atStartOfCell2)
+  assert.strictEqual(blocks.caretAnchor(el).offset, atStartOfCell2.offset)
+  check('K6 表格内光标锚点区分格首与上一格末尾', () => {})
+}
+{
+  // 表格是独立块类型：块切换与清理都不该动它
+  const el = editorWith('<table><tbody><tr><td><br></td></tr></tbody></table>')
+  const cell = el.querySelector('td')
+  const r = document.createRange()
+  r.setStart(cell, 0)
+  r.collapse(true)
+  const sel = window.getSelection()
+  sel.removeAllRanges()
+  sel.addRange(r)
+  assert.strictEqual(blocks.resolveBlock(el).tagName, 'TABLE')
+  blocks.setBlockType(el, 'h1')
+  assert.ok(el.querySelector('table'), '块切换不应把表格改成标题')
+  assert.strictEqual(el.querySelector('h1'), null)
+  blocks.tidyBlock(el.querySelector('table'))
+  assert.ok(el.querySelector('td br'), '清理不应删掉单元格里的 <br>')
+  check('K7 表格不受块切换与 tidyBlock 影响', () => {})
+}
+
+reset()
+console.log('L. 表格单元格对齐')
+{
+  const el = editorWith('<table><tbody><tr><td>甲</td><td>乙</td></tr></tbody></table>')
+  const tds = el.querySelectorAll('td')
+  const sel = window.getSelection()
+  const r = document.createRange()
+  r.setStart(tds[0].firstChild, 1)
+  r.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(r)
+
+  assert.strictEqual(blocks.tableContext(el).align, 'left') // 默认左对齐
+  assert.strictEqual(blocks.setTableCellAlign(el, 'center'), true)
+  assert.strictEqual(tds[0].style.textAlign, 'center')
+  assert.strictEqual(blocks.tableContext(el).align, 'center')
+  assert.strictEqual(tds[1].style.textAlign, '', '只影响光标所在单元格')
+
+  blocks.setTableCellAlign(el, 'right')
+  assert.strictEqual(tds[0].style.textAlign, 'right')
+
+  // 回到左对齐 = 清除字面样式，存储保持干净
+  blocks.setTableCellAlign(el, 'left')
+  assert.strictEqual(tds[0].getAttribute('style'), null)
+  assert.strictEqual(blocks.tableContext(el).align, 'left')
+  check('L1 单元格对齐可设置 / 切换 / 清除', () => {})
+}
+{
+  // 跨格选区批量设置
+  const el = editorWith('<table><tbody><tr><td>甲</td><td>乙</td><td>丙</td></tr></tbody></table>')
+  const tds = el.querySelectorAll('td')
+  const sel = window.getSelection()
+  const range = document.createRange()
+  range.setStart(tds[0].firstChild, 0)
+  range.setEnd(tds[1].firstChild, 1)
+  sel.removeAllRanges()
+  sel.addRange(range)
+  assert.strictEqual(blocks.setTableCellAlign(el, 'center'), true)
+  assert.strictEqual(tds[0].style.textAlign, 'center')
+  assert.strictEqual(tds[1].style.textAlign, 'center')
+  assert.strictEqual(tds[2].style.textAlign, '', '选区外的单元格不受影响')
+  check('L2 选中多个单元格可批量设置对齐', () => {})
+}
+
 console.log(`\n结果：通过 ${passed} 项，失败 ${failed} 项`)
 process.exit(failed > 0 ? 1 : 0)

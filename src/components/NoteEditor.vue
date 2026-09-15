@@ -40,6 +40,7 @@ import {
   healStrayTopLevelText,
   handleEnterKey,
   handleTabKey,
+  insertCellLineBreak,
   insertCodeNewline,
   isInsideEditor,
   isMarkActive,
@@ -49,7 +50,20 @@ import {
   restoreCaretAnchor,
   type CaretAnchor,
   setBlockType,
+  setTableCellsAlign,
+  deleteTableAt,
+  deleteTableColumnAt,
+  deleteTableRowAt,
+  insertTable,
+  insertTableColumnAt,
+  insertTableRowAt,
+  tableContext,
+  tableIndex,
+  tableSelectedCells,
+  tableEnterNext,
+  tableMoveCell,
   tidyBlock,
+  toggleCodeComment,
   toggleInlineMark,
   unwrapHighlightSpans,
   unwrapTypographySpans,
@@ -69,7 +83,7 @@ import { useToast } from "../composables/useToast";
 const { currentNote, dirty, markDirty, markEdited } = useNotes();
 const { toast } = useToast();
 /** 正文与标题的可视化样式（CSS 变量实时注入 .note-content） */
-const { cssVars, codeStyleClass, state: textStyles } = useNoteStyles();
+const { cssVars, tableVars, codeStyleClass, state: textStyles } = useNoteStyles();
 
 /** 各块（标签名 → 最终底色 CSS 颜色）映射；全透明时为 'transparent'，不会包裹 */
 const bgByTag = computed<Record<string, string>>(() => {
@@ -281,7 +295,9 @@ function tidyEditorDom(el: HTMLElement): void {
       const pre = child as HTMLElement;
       const sel = window.getSelection();
       const caretInside = !!sel?.anchorNode && pre.contains(sel.anchorNode);
-      if (!caretInside && pre.querySelector("p,div,span")) {
+      // 注意：高亮用的 span.token 是正常渲染标记，不算“脏结构”，
+      // 否则光标离开的代码块会被拍平成纯文本（表现为高亮掉色）
+      if (!caretInside && pre.querySelector("p,div,span:not(.token)")) {
         flattenPreElement(pre);
       }
       continue;
@@ -443,6 +459,13 @@ function refreshUi(): void {
   ui.collapsed = !hasTextSelection(el);
   ui.inCode = ui.kind === "codeblock";
   ui.inList = ui.kind === "bulletList" || ui.kind === "orderedList";
+  const tctx = tableContext(el);
+  ui.inTable = tctx !== null;
+  if (tctx) {
+    lastTableCtx = { table: tctx.table, row: tctx.rowIndex, col: tctx.colIndex };
+    ui.tableAlign = tctx.align;
+    rememberTableSelection();
+  }
   refreshUndoFlags();
 }
 
@@ -537,6 +560,132 @@ function afterDomChange(): void {
   scheduleOutline();
 }
 
+/* ================= 表格 ================= */
+
+/** 最近一次“光标在表格内”的位置：点击工具条按钮会让编辑器失焦、光标可能丢失，
+ *  行列增删据此定位，保证按钮点击始终生效 */
+let lastTableCtx: { table: HTMLTableElement; row: number; col: number } | null = null;
+let lastTableSel: { table: HTMLTableElement; cells: { row: number; col: number }[] } | null = null;
+
+/** 记住“最近一次跨多格的选区”：点按钮后 DOM 重排会让选区失效，
+ *  退化成单格光标，因此多格选区必须单独记着。 */
+function rememberTableSelection(): void {
+  const el = contentEl.value;
+  if (!el) return;
+  const sel = tableSelectedCells(el);
+  if (sel && sel.cells.length > 1) lastTableSel = sel;
+}
+
+/** 用户在编辑器里开始新的一次选择动作 → 作废旧的“多格记忆” */
+function onEditorPointerDown(): void {
+  lastTableSel = null;
+}
+
+/** 方向键改选之后重新评估多格选区（键盘选择也要能更新/作废记忆） */
+function onEditorKeyUp(e: KeyboardEvent): void {
+  if (e.key.startsWith("Arrow") || e.key === "Shift") {
+    const el = contentEl.value;
+    const sel = el ? tableSelectedCells(el) : null;
+    lastTableSel = sel && sel.cells.length > 1 ? sel : null;
+  }
+  refreshUi();
+}
+
+/** 对齐要作用的单元格：多格记忆优先（它代表用户最近一次明确的多格选择），
+ *  没有多格记忆时用实时选区，最后才退化到单格记忆 */
+function alignTargetCells() {
+  const el = contentEl.value;
+  if (!el) return null;
+  const live = tableSelectedCells(el);
+  const remembered =
+    lastTableSel && lastTableSel.table.isConnected ? lastTableSel : null;
+  if (remembered && remembered.cells.length > 1) return remembered;
+  return live ?? remembered;
+}
+
+function currentTableContext() {
+  const el = contentEl.value;
+  if (!el) return null;
+  const live = tableContext(el);
+  if (live) {
+    lastTableCtx = { table: live.table, row: live.rowIndex, col: live.colIndex };
+    return live;
+  }
+  if (lastTableCtx && lastTableCtx.table.isConnected) {
+    const restored = tableIndex(lastTableCtx.table, lastTableCtx.row, lastTableCtx.col);
+    if (restored) {
+      lastTableCtx = { table: restored.table, row: restored.rowIndex, col: restored.colIndex };
+      return restored;
+    }
+  }
+  return null;
+}
+
+function insertNewTable(rows: number, cols: number): void {
+  const el = contentEl.value;
+  if (!el) return;
+  if (!insertTable(el, rows, cols)) return;
+  lastTableCtx = null; // 新表格：下一次 refreshUi 会重新记录
+  afterDomChange();
+  toast(`已插入 ${rows} × ${cols} 表格`);
+}
+
+function tableRowAction(where: "above" | "below"): void {
+  const ctx = currentTableContext();
+  if (!ctx) return;
+  if (!insertTableRowAt(ctx, where)) return;
+  afterDomChange();
+  toast(where === "above" ? "已在上方插入行" : "已在下方插入行");
+}
+
+function tableColumnAction(where: "left" | "right"): void {
+  const ctx = currentTableContext();
+  if (!ctx) return;
+  if (!insertTableColumnAt(ctx, where)) return;
+  afterDomChange();
+  toast(where === "left" ? "已在左侧插入列" : "已在右侧插入列");
+}
+
+function tableDeleteRow(): void {
+  const ctx = currentTableContext();
+  if (!ctx) return;
+  const onlyRow = ctx.table.querySelectorAll("tr").length <= 1;
+  if (!deleteTableRowAt(ctx)) return;
+  lastTableCtx = null;
+  afterDomChange();
+  toast(onlyRow ? "表格已删除" : "已删除该行");
+}
+
+function tableDeleteCol(): void {
+  const ctx = currentTableContext();
+  if (!ctx) return;
+  const onlyCol = ctx.table.querySelector("tr")!.children.length <= 1;
+  if (!deleteTableColumnAt(ctx)) return;
+  lastTableCtx = null;
+  afterDomChange();
+  toast(onlyCol ? "表格已删除" : "已删除该列");
+}
+
+function tableAlignAction(align: "left" | "center" | "right"): void {
+  const el = contentEl.value;
+  if (!el) return;
+  const target = alignTargetCells();
+  if (!target) return;
+  if (!setTableCellsAlign(target.table, target.cells, align)) return;
+  refreshUi();
+  afterDomChange();
+  toast(align === "center" ? "已居中" : align === "right" ? "已右对齐" : "已左对齐");
+}
+
+function tableDelete(): void {
+  const ctx = currentTableContext();
+  if (!ctx) return;
+  if (!deleteTableAt(ctx)) return;
+  lastTableCtx = null;
+  afterDomChange();
+  toast("已删除表格");
+}
+
 /* ================= 编辑器键盘 / 剪贴板 ================= */
 
 function onKeydown(e: KeyboardEvent): void {
@@ -561,6 +710,15 @@ function onKeydown(e: KeyboardEvent): void {
     exec("inlineCode");
     return;
   }
+  // ⌘/ · Ctrl+/：代码块内切换行注释（`// `），支持多行
+  if (mod && (e.key === "/" || e.key === "?")) {
+    e.preventDefault();
+    if (toggleCodeComment(el)) {
+      afterDomChange();
+      scheduleHighlight(); // 注释后立刻按新内容重新着色
+    }
+    return;
+  }
   if (mod) return;
 
   // 代码块最后一行行尾按 ↓：在代码块下方另起新行并跳出代码块
@@ -583,6 +741,14 @@ function onKeydown(e: KeyboardEvent): void {
   if (e.key === "Enter") {
     // 输入法组合中按回车是确认候选词，交给浏览器，不做块拆分
     if (e.isComposing || e.keyCode === 229) return;
+    // 表格：Enter 跳到下一行同一列（最后一行则新建一行）；Shift+Enter 单元格内换行
+    if (tableContext(el)) {
+      e.preventDefault();
+      if (e.shiftKey) insertCellLineBreak(el);
+      else tableEnterNext(el);
+      afterDomChange();
+      return;
+    }
     // 代码块内：自己插入换行（浏览器默认会生成多余的 <br>，导致空行与光标错位）
     if (insertCodeNewline(el)) {
       e.preventDefault();
@@ -609,6 +775,13 @@ function onKeydown(e: KeyboardEvent): void {
     return;
   }
   if (e.key === "Tab") {
+    // 表格内：Tab / Shift+Tab 在单元格之间走，走到最后一格再 Tab 会新增一行
+    if (tableContext(el)) {
+      e.preventDefault();
+      tableMoveCell(el, e.shiftKey);
+      afterDomChange();
+      return;
+    }
     if (handleTabKey(el, e.shiftKey)) {
       e.preventDefault();
       afterDomChange();
@@ -750,6 +923,13 @@ onBeforeUnmount(() => {
         :outline-open="outlineOpen"
         @exec="exec"
         @toggle-outline="toggleOutline"
+        @table-insert="insertNewTable"
+        @table-row="(w) => tableRowAction(w)"
+        @table-col="(w) => tableColumnAction(w)"
+        @table-delete-row="tableDeleteRow"
+        @table-delete-col="tableDeleteCol"
+        @table-delete="tableDelete"
+        @table-align="(a: 'left' | 'center' | 'right') => tableAlignAction(a)"
       />
     </div>
 
@@ -783,7 +963,7 @@ onBeforeUnmount(() => {
             spellcheck="false"
             role="textbox"
             aria-multiline="true"
-            :style="cssVars"
+            :style="[cssVars, tableVars]"
             @input="onContentInput"
             @compositionstart="onCompositionStart"
             @compositionend="onCompositionEnd"
@@ -791,7 +971,8 @@ onBeforeUnmount(() => {
             @paste="onPaste"
             @copy="onCopy"
             @click="refreshUi"
-            @keyup="refreshUi"
+            @keyup="onEditorKeyUp"
+            @mousedown="onEditorPointerDown"
             @focus="refreshUi"
             @blur="onBlur"
           ></div>

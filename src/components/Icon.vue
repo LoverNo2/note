@@ -11,6 +11,7 @@ export type IconName =
   | "codeblock"
   | "bulletList"
   | "orderedList"
+  | "table"
   | "bold"
   | "italic"
   | "underline"
@@ -81,6 +82,13 @@ defineProps<{ name: IconName }>();
     >
       &#60;/&#62;
     </text>
+
+    <!-- 表格：外框 + 一条横线一条竖线 -->
+    <template v-else-if="name === 'table'">
+      <rect x="4" y="5.5" width="16" height="13" rx="2" />
+      <line x1="4" y1="10.5" x2="20" y2="10.5" />
+      <line x1="10.8" y1="5.5" x2="10.8" y2="18.5" />
+    </template>
 
     <!-- 无序列表：竖排圆点 -->
     <template v-else-if="name === 'bulletList'">

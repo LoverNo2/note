@@ -9,17 +9,10 @@
  * - 语言靠关键词命中数自动猜测；认不出来时退回通用规则（clike）。
  */
 import Prism from 'prismjs'
+// 只加载 JavaScript 规则（含其依赖 clike）；统一按 JS 着色，不再按语言猜测，
+// 因此其它语言包无需引入，可减小打包体积。
 import 'prismjs/components/prism-clike'
 import 'prismjs/components/prism-javascript'
-import 'prismjs/components/prism-typescript'
-import 'prismjs/components/prism-python'
-import 'prismjs/components/prism-c'
-import 'prismjs/components/prism-cpp'
-import 'prismjs/components/prism-csharp'
-import 'prismjs/components/prism-json'
-import 'prismjs/components/prism-bash'
-import 'prismjs/components/prism-gdscript'
-import 'prismjs/components/prism-markup'
 
 /** 与 blocks.ts 中一致的光标锚点（零宽空格） */
 const CODE_ANCHOR = '\u200b'
@@ -48,33 +41,56 @@ export function codeBlockText(code: HTMLElement): string {
   return out.join('')
 }
 
-/** 语言猜测规则：命中越多越可能是该语言（按优先级排列） */
-const LANGUAGE_HINTS: ReadonlyArray<{ lang: string; re: RegExp }> = [
-  { lang: 'gdscript', re: /\b(func|extends|signal|var|const|match|@export|_ready|_process|class_name|preload|yield)\b/g },
-  { lang: 'typescript', re: /\b(interface|type|enum|implements|declare|namespace|readonly|as|satisfies)\b/g },
-  { lang: 'javascript', re: /\b(function|const|let|var|=>|console\.log|require|module\.exports|export default|async|await|import|export|new)\b/g },
-  { lang: 'python', re: /\b(def|class|import|from|None|True|False|elif|lambda|self|print)\b|^\s*#/gm },
-  { lang: 'cpp', re: /\b(#include|std::|template|namespace|constexpr|nullptr|virtual|public:|private:)\b/g },
-  { lang: 'c', re: /\b(#include|printf|malloc|sizeof|struct|typedef|int main)\b/g },
-  { lang: 'csharp', re: /\b(using|namespace|public class|void|string\[\]|Console\.WriteLine|var|get;|set;)\b/g },
-  { lang: 'json', re: /^\s*[{[]|"[^"]+"\s*:/gm },
-  { lang: 'bash', re: /^(#!|\s*(sudo|cd|ls|grep|awk|sed|echo|export|source|chmod|git)\b)/gm },
-  { lang: 'markup', re: /<\/?[a-z][\w-]*(\s[^>]*)?>/gi },
-]
+/**
+ * 统一使用的着色语言：所有代码块都按 JavaScript 规则着色。
+ * （若日后想恢复“按语言自动识别”，把这里换成 guessLanguage() 的返回值即可。）
+ */
+const HIGHLIGHT_LANGUAGE = 'javascript'
 
-/** 猜测语言；识别不出时返回空串（用通用规则高亮） */
-export function guessLanguage(text: string): string {
-  let best = ''
-  let bestScore = 0
-  for (const { lang, re } of LANGUAGE_HINTS) {
-    const score = (text.match(new RegExp(re.source, re.flags)) ?? []).length
-    if (score > bestScore) {
-      bestScore = score
-      best = lang
-    }
-  }
-  // 命中 1 次就采用（短代码也能识别）；一次都没命中则用通用规则
-  return bestScore >= 1 ? best : ''
+/**
+ * Prism 的 JS 规则只给关键字 / 函数名 / 内置类名上色，
+ * 大写开头的类名、全大写常量（静态类、全局对象、通知常量等）会被当成普通标识符而不着色。
+ * 这里补两条规则（顺序：先全大写常量，再首字母大写的类名）：
+ *   - NOTIFICATION_ENTER_TREE / MAX / ClassDB 这样全大写的 → 常量色
+ *   - SceneTree / Main / OS / Math 这样首字母大写的 → 类名色
+ *   - console / window / document 这类全局对象 → 内置对象色
+ *   - 点后面的成员名 → 属性色
+ *   - 其余还没着色的标识符（局部变量、自定义名字）→ 变量色（兜底）
+ */
+let grammarPatched = false
+function patchedJavaScript(): Prism.Grammar | undefined {
+  if (grammarPatched) return Prism.languages[HIGHLIGHT_LANGUAGE]
+  if (!Prism.languages[HIGHLIGHT_LANGUAGE]) return undefined
+  Prism.languages.insertBefore(HIGHLIGHT_LANGUAGE, 'operator', {
+    // 全大写常量 / 通知名：NOTIFICATION_ENTER_TREE、MAX
+    'upper-constant': {
+      pattern: /\b[A-Z][A-Z0-9_]*\b/,
+      alias: 'constant',
+    },
+    // 首字母大写的类名 / 静态类：SceneTree、Main、OS
+    'class-name-static': {
+      pattern: /\b[A-Z][A-Za-z0-9_]*\b/,
+      alias: 'class-name',
+    },
+    // 全局对象：console、window、document、globalThis……
+    'global-object': {
+      pattern:
+        /\b(?:console|window|document|globalThis|global|process|module|exports|require|Reflect|Proxy|Symbol|BigInt|WeakMap|WeakSet|Intl|Atomics|performance|location|navigator|localStorage|sessionStorage)\b/,
+      alias: 'builtin',
+    },
+    // 点后面的成员名：x.delta、node.children
+    'member-access': {
+      pattern: /(?<=\.)[A-Za-z_$][A-Za-z0-9_$]*/,
+      alias: 'property',
+    },
+    // 兜底：剩下的标识符（局部变量、自定义名字）也上一档柔和的颜色
+    'identifier': {
+      pattern: /[A-Za-z_$][A-Za-z0-9_$]*/,
+      alias: 'variable',
+    },
+  })
+  grammarPatched = true
+  return Prism.languages[HIGHLIGHT_LANGUAGE]
 }
 
 /** 把节点里的换行文本还原成 <br>（保留 span 结构），末尾换行补光标锚点 */
@@ -116,10 +132,9 @@ export function highlightCodeBlock(pre: HTMLElement): boolean {
   if (!code || code.tagName !== 'CODE') return false
   const text = codeBlockText(code)
   if (!text.trim()) return false
-  const lang = guessLanguage(text)
-  const grammar = (lang && Prism.languages[lang]) || Prism.languages.clike
+  const grammar = patchedJavaScript() ?? Prism.languages.clike
   if (!grammar) return false
-  const html = Prism.highlight(text, grammar, lang || 'clike')
+  const html = Prism.highlight(text, grammar, HIGHLIGHT_LANGUAGE)
   code.innerHTML = html
   newlinesToBr(code)
   return true

@@ -516,92 +516,184 @@ textarea,
   color: var(--text-strong);
 }
 
+/* ---------- 表格（内置样式；边框色 / 表头底色可在样式配置里改） ---------- */
+
+.note-content table {
+  width: 100%;
+  margin: 0.75em 0;
+  /* separate + spacing 0：单元格才会吃 border-radius；
+     边框全部由单元格绘制，圆角处边框才会跟着一起弯 */
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+
+.note-content th,
+.note-content td {
+  padding: 0.45em 0.7em;
+  border-top: 1px solid var(--table-border, #d8d9dc);
+  border-left: 1px solid var(--table-border, #d8d9dc);
+  vertical-align: top;
+  text-align: left;
+  font-size: var(--p-fs, 16px);
+  line-height: 1.65;
+  letter-spacing: var(--p-ls, 0.005em);
+  word-break: break-word;
+}
+
+/* 右边界由最后一列画，下边界由最后一行画 */
+.note-content tr > *:last-child {
+  border-right: 1px solid var(--table-border, #d8d9dc);
+}
+.note-content tr:last-child > * {
+  border-bottom: 1px solid var(--table-border, #d8d9dc);
+}
+
+.note-content th {
+  background: var(--table-head-bg, #f0f0f2);
+  font-weight: 600;
+}
+
+/* 四角圆角：与单元格边框同步弯曲，不再是「表格圆角 + 边框直角」 */
+.note-content tr:first-child > *:first-child {
+  border-top-left-radius: 10px;
+}
+.note-content tr:first-child > *:last-child {
+  border-top-right-radius: 10px;
+}
+.note-content tr:last-child > *:first-child {
+  border-bottom-left-radius: 10px;
+}
+.note-content tr:last-child > *:last-child {
+  border-bottom-right-radius: 10px;
+}
+
 /* ---------- 代码块语法高亮（Prism token；仅渲染层，不入存储） ---------- */
+/* 浅色代码块配色：关键字/函数/字符串/数字/常量/参数/属性/类名/运算符/正则 各自成色 */
 .note-content pre .token.comment,
 .note-content pre .token.prolog,
 .note-content pre .token.doctype,
 .note-content pre .token.cdata {
-  color: #7c8494;
+  color: #6f8f6a;
   font-style: italic;
-}
-.note-content pre .token.punctuation {
-  color: #5b6472;
 }
 .note-content pre .token.keyword,
 .note-content pre .token.control,
 .note-content pre .token.directive,
-.note-content pre .token.atrule {
-  color: #cf222e;
+.note-content pre .token.atrule,
+.note-content pre .token.module {
+  color: #a626a4;
   font-weight: 600;
 }
 .note-content pre .token.string,
 .note-content pre .token.char,
 .note-content pre .token.attr-value,
+.note-content pre .token.template-string,
 .note-content pre .token.inserted {
-  color: #0a7c5a;
+  color: #2f9e44;
 }
 .note-content pre .token.number,
 .note-content pre .token.boolean,
-.note-content pre .token.constant {
-  color: #0550ae;
+.note-content pre .token.constant,
+.note-content pre .token.symbol {
+  color: #b45309;
 }
 .note-content pre .token.function,
 .note-content pre .token.method {
-  color: #7c3aed;
+  color: #4078f2;
 }
 .note-content pre .token.class-name,
-.note-content pre .token.builtin,
+.note-content pre .token.maybe-class-name,
 .note-content pre .token.regex,
 .note-content pre .token.important {
-  color: #b45309;
+  color: #c18401;
 }
+/* 参数：之前没有配色，会跟正文一样是深灰 */
+.note-content pre .token.parameter {
+  color: #7c4dff;
+}
+/* 属性 / 成员 / 对象字面量键 */
 .note-content pre .token.property,
-.note-content pre .token.tag,
-.note-content pre .token.symbol,
+.note-content pre .token.literal-property,
 .note-content pre .token.attr-name,
-.note-content pre .token.selector {
+.note-content pre .token.selector,
+.note-content pre .token.tag,
+.note-content pre .token.builtin {
   color: #0b6bcb;
 }
 .note-content pre .token.operator,
 .note-content pre .token.entity,
-.note-content pre .token.url {
-  color: #4b5563;
+.note-content pre .token.url,
+.note-content pre .token.interpolation {
+  color: #0184bc;
+}
+.note-content pre .token.punctuation,
+.note-content pre .token.interpolation-punctuation {
+  color: #6b7280;
+}
+/* 兜底：没有被上面任何规则命中的标识符（局部变量、自定义名字） */
+.note-content pre .token.variable {
+  color: #45597e;
 }
 .note-content pre .token.deleted {
   color: #cf222e;
 }
-
-/* 深色终端外观下换一套配色 */
-.note-content.code-c pre .token.comment {
-  color: #8b949e;
+.note-content pre .token.bold {
+  font-weight: 700;
 }
-.note-content.code-c pre .token.punctuation {
-  color: #c9d1d9;
+.note-content pre .token.italic {
+  font-style: italic;
+}
+
+/* 深色终端外观下换一套（One Dark 风格） */
+.note-content.code-c pre .token.comment {
+  color: #7f9f6a;
 }
 .note-content.code-c pre .token.keyword {
-  color: #ff7b72;
+  color: #c678dd;
 }
 .note-content.code-c pre .token.string,
+.note-content.code-c pre .token.template-string,
 .note-content.code-c pre .token.attr-value {
-  color: #a5d6ff;
+  color: #98c379;
 }
 .note-content.code-c pre .token.number,
 .note-content.code-c pre .token.boolean,
 .note-content.code-c pre .token.constant {
-  color: #79c0ff;
+  color: #d19a66;
 }
 .note-content.code-c pre .token.function,
 .note-content.code-c pre .token.method {
-  color: #d2a8ff;
+  color: #61afef;
+}
+.note-content.code-c pre .token.parameter {
+  color: #e5c07b;
 }
 .note-content.code-c pre .token.class-name,
-.note-content.code-c pre .token.builtin {
-  color: #ffa657;
+.note-content.code-c pre .token.maybe-class-name {
+  color: #e3b341;
 }
 .note-content.code-c pre .token.property,
-.note-content.code-c pre .token.tag,
+.note-content.code-c pre .token.literal-property,
 .note-content.code-c pre .token.attr-name {
   color: #7ee787;
+}
+.note-content.code-c pre .token.operator,
+.note-content.code-c pre .token.interpolation {
+  color: #56b6c2;
+}
+.note-content.code-c pre .token.punctuation {
+  color: #c9d1d9;
+}
+.note-content.code-c pre .token.variable {
+  color: #a9bcd8;
+}
+.note-content.code-c pre .token.builtin {
+  color: #56b6c2;
+}
+.note-content.code-c pre .token.regex,
+.note-content.code-c pre .token.important {
+  color: #ffa657;
 }
 
 /* ---------- 代码块外观预设（样式配置窗口「代码块」页签） ---------- */
@@ -783,6 +875,18 @@ textarea,
    打印：代码块外观降级（省墨、边界清晰）
    ============================================================ */
 @media print {
+  /* 表格：允许整表跨页，但单行不要被切开；表头每页重复 */
+  .note-content table {
+    break-inside: auto;
+  }
+  .note-content tr,
+  .note-content th,
+  .note-content td {
+    break-inside: avoid;
+  }
+  .note-content thead {
+    display: table-header-group;
+  }
   /* 深色终端 → 浅色 */
   .note-content.code-c pre {
     background: #f7f7f5;

@@ -174,6 +174,60 @@ export function bgToCss(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${a})`
 }
 
+/** 表格外观配置（全局共用：边框色 / 表头底色） */
+export interface TableStyle {
+  borderColor: string
+  headerBg: string
+}
+
+export const TABLE_STYLE_DEFAULTS: TableStyle = {
+  borderColor: '#d8d9dc',
+  headerBg: '#f0f0f2',
+}
+
+const TABLE_STORAGE_KEY = 'notebook:tableStyle:v1'
+
+function loadTableStyle(): TableStyle {
+  try {
+    const raw = localStorage.getItem(TABLE_STORAGE_KEY)
+    if (!raw) return { ...TABLE_STYLE_DEFAULTS }
+    const parsed = JSON.parse(raw) as Partial<TableStyle>
+    return {
+      borderColor:
+        typeof parsed.borderColor === 'string'
+          ? parsed.borderColor
+          : TABLE_STYLE_DEFAULTS.borderColor,
+      headerBg:
+        typeof parsed.headerBg === 'string'
+          ? parsed.headerBg
+          : TABLE_STYLE_DEFAULTS.headerBg,
+    }
+  } catch {
+    return { ...TABLE_STYLE_DEFAULTS }
+  }
+}
+
+const tableStyle = ref<TableStyle>(loadTableStyle())
+
+watch(
+  tableStyle,
+  (v) => {
+    try {
+      localStorage.setItem(TABLE_STORAGE_KEY, JSON.stringify(v))
+      markSettingsDirty()
+    } catch {
+      /* 存储不可用时忽略 */
+    }
+  },
+  { deep: true },
+)
+
+/** 表格外观 → CSS 变量的值（挂到 .note-content 上） */
+const tableVars = computed<Record<string, string>>(() => ({
+  '--table-border': tableStyle.value.borderColor || TABLE_STYLE_DEFAULTS.borderColor,
+  '--table-head-bg': tableStyle.value.headerBg || 'transparent',
+}))
+
 const STORAGE_KEY = 'notebook:textStyles:v1'
 /** 正文段间距默认值迁移标记（6 → 0） */
 export const SEG_GAP_MIGRATED_KEY = 'notebook:textStyles:segGapMigrated'
@@ -341,5 +395,8 @@ export function useNoteStyles() {
     codeStyle,
     codeStyleClass,
     codeStyles: CODE_BLOCK_STYLES,
+    tableStyle,
+    tableVars,
+    tableStyleDefaults: TABLE_STYLE_DEFAULTS,
   }
 }

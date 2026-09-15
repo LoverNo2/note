@@ -64,6 +64,8 @@ export function resolveBlock(editor: HTMLElement): HTMLElement | null {
     if (node.nodeType === Node.ELEMENT_NODE) {
       const tag = (node as HTMLElement).tagName
       if (tag === 'LI' || tag === 'PRE') return node as HTMLElement
+      // 表格内的光标归属到整张表格（单元格本身不是可切换的块类型）
+      if (tag === 'TABLE') return node as HTMLElement
       if (tag === 'P' || HEADING_TAGS.includes(tag) || tag === 'DIV') {
         blockCandidate = node as HTMLElement
       }
@@ -78,6 +80,8 @@ export function currentBlockKind(editor: HTMLElement): BlockKind | null {
   const block = resolveBlock(editor)
   if (!block) return null
   const tag = block.tagName
+  // 表格不是可切换的块类型：不点亮任何块按钮
+  if (tag === 'TABLE') return null
   if (tag === 'LI') {
     return block.closest('OL') ? 'orderedList' : 'bulletList'
   }
@@ -131,21 +135,141 @@ export function caretAnchor(editor: HTMLElement): CaretAnchor | null {
   } catch {
     return { block: blockIndex, offset: 0 }
   }
-  const frag = range.cloneContents()
-  let offset = 0
-  const walker = document.createTreeWalker(frag, NodeFilter.SHOW_TEXT)
-  let n: Node | null = walker.nextNode()
-  while (n) {
-    offset += (n.textContent ?? '').replace(/\u200b/g, '').length
-    n = walker.nextNode()
+  const offset = blockOffsetAt(block, sel.anchorNode, sel.anchorOffset)
+  return { block: blockIndex, offset: offset ?? 0 }
+}
+
+/** 一个节点的偏移权重：文本字符数、<br> 与单元格边界各 1 */
+function nodeWeight(node: Node): number {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return (node.textContent ?? '').replace(/\u200b/g, '').length
   }
-  return { block: blockIndex, offset }
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    const tag = (node as HTMLElement).tagName
+    if (tag === 'BR' || tag === 'TD' || tag === 'TH') return 1
+    let sum = 0
+    for (const child of Array.from(node.childNodes)) sum += nodeWeight(child)
+    return sum
+  }
+  return 0
+}
+
+/**
+ * 块内偏移：文本字符数 + 每个 <br> 计 1 + 每个单元格边界计 1。
+ * 必须把 <br> 和单元格边界算进去，否则“第 N 行/格开头”与“上一行/格末尾”
+ * 会算出同一个偏移，DOM 重排（语法高亮、排版包裹）后光标就会跑到上一行/上一格。
+ * 采用“从块首一路走到光标位置”的计数方式（而不是 cloneContents），
+ * 这样光标正好落在某个元素边界（如空的 td）时也能正确计入。
+ */
+function blockOffsetAt(block: HTMLElement, container: Node, offset: number): number | null {
+  let total = 0
+  let found: number | null = null
+  const walk = (node: Node): void => {
+    for (const child of Array.from(node.childNodes)) {
+      if (found !== null) return
+      if (child === container) {
+        if (child.nodeType === Node.TEXT_NODE) {
+          found = total + offset
+        } else {
+          const tag = (child as HTMLElement).tagName
+          // 光标停在元素边界上（如空单元格）：偏移 0 表示“跨入这个元素”
+          const bump = (tag === 'TD' || tag === 'TH') && offset === 0 ? 1 : 0
+          let acc = 0
+          for (let i = 0; i < Math.min(offset, child.childNodes.length); i++) {
+            acc += nodeWeight(child.childNodes[i])
+          }
+          found = total + bump + acc
+        }
+        return
+      }
+      if (child.nodeType === Node.ELEMENT_NODE) {
+        const tag = (child as HTMLElement).tagName
+        if (tag === 'BR') {
+          total += 1
+          continue
+        }
+        // 单元格边界占 1，并继续进入单元格内部计数
+        if (tag === 'TD' || tag === 'TH') total += 1
+        walk(child)
+        continue
+      }
+      total += (child.textContent ?? '').replace(/\u200b/g, '').length
+    }
+  }
+  walk(block)
+  return found
+}
+
+/** 按“块内偏移（<br> 计 1）”放置光标：行首 / 上一行末尾由此区分 */
+function placeCaretAtBlockOffset(block: HTMLElement, offset: number): void {
+  let remain = Math.max(0, offset)
+  let placed = false
+  const put = (range: Range): void => {
+    if (placed) return
+    placed = true
+    applyRange(range)
+  }
+  const walk = (node: Node): void => {
+    if (placed) return
+    for (const child of Array.from(node.childNodes)) {
+      if (placed) return
+      if (child.nodeType === Node.ELEMENT_NODE) {
+        const childTag = (child as HTMLElement).tagName
+        if (childTag === 'TD' || childTag === 'TH') {
+          // 偏移落在单元格边界上 → 进入这个单元格的开头
+          if (remain <= 1) {
+            const range = document.createRange()
+            range.setStart(child, 0)
+            range.collapse(true)
+            put(range)
+            return
+          }
+          remain -= 1
+          walk(child)
+          continue
+        }
+        if (childTag === 'BR') {
+          if (remain === 0) {
+            // 偏移正好落在换行符上 → 上一行末尾
+            const range = document.createRange()
+            range.setStartBefore(child)
+            range.collapse(true)
+            put(range)
+            return
+          }
+          remain -= 1
+          if (remain === 0) {
+            // 换行符之后 → 下一行行首
+            const range = document.createRange()
+            range.setStartAfter(child)
+            range.collapse(true)
+            put(range)
+            return
+          }
+          continue
+        }
+        walk(child)
+        continue
+      }
+      const text = (child.textContent ?? '').replace(/\u200b/g, '')
+      if (remain <= text.length) {
+        const range = document.createRange()
+        range.setStart(child, remain)
+        range.collapse(true)
+        put(range)
+        return
+      }
+      remain -= text.length
+    }
+  }
+  walk(block)
+  if (!placed) placeCaretAtEndOf(block)
 }
 
 export function restoreCaretAnchor(editor: HTMLElement, anchor: CaretAnchor): void {
   const block = editor.children[anchor.block] as HTMLElement | undefined
   if (!block) return
-  placeCaretInTextAt(block, anchor.offset)
+  placeCaretAtBlockOffset(block, anchor.offset)
 }
 
 export function caretTextIndex(editor: HTMLElement): number {
@@ -509,6 +633,10 @@ export interface ToolbarUi {
   inCode: boolean
   /** 光标在列表项内 */
   inList: boolean
+  /** 光标在表格内 */
+  inTable: boolean
+  /** 光标所在单元格的内容对齐（不在表格内时无意义） */
+  tableAlign: CellAlign
   canUndo: boolean
   canRedo: boolean
 }
@@ -526,6 +654,8 @@ export function emptyToolbarUi(): ToolbarUi {
     collapsed: true,
     inCode: false,
     inList: false,
+    inTable: false,
+    tableAlign: 'left',
     canUndo: false,
     canRedo: false,
   }
@@ -538,6 +668,8 @@ function isPlainBlock(block: HTMLElement | null): boolean {  return !!block && (
 export function setBlockType(editor: HTMLElement, kind: BlockKind): void {
   const block = resolveBlock(editor)
   if (!block) return
+  // 表格不是可切换的块类型：光标在表格内时块按钮不生效
+  if (block.tagName === 'TABLE') return
 
   // —— 列表类目标 ——
   if (kind === 'codeblock' && block.tagName !== 'PRE') {
@@ -876,9 +1008,9 @@ export function tidyBlock(
   block: HTMLElement,
   protectCaret = false,
 ): boolean {
-  // 代码块不参与正文式清理：块内的 <br> 就是换行（末尾的 <br> 是一个空行），
-  // 行尾空格也可能是刻意保留的，清理会破坏换行结构与光标位置
-  if (block.tagName === 'PRE') return false
+  // 代码块 / 表格不参与正文式清理：块内的 <br> 就是换行（空单元格也靠它落脚），
+  // 行尾空格也可能是刻意保留的，清理会破坏结构与光标位置
+  if (block.tagName === 'PRE' || block.tagName === 'TABLE') return false
   let changed = stripForeignStylesIn(block)
   while (trimTrailingBreaksIn(block)) changed = true
   if (trimTrailingSpacesIn(block, protectCaret)) changed = true
@@ -1118,6 +1250,550 @@ export function codeExitOnArrowDown(editor: HTMLElement): boolean {
   const p = newParagraph()
   block.after(p)
   placeCaretAtStartOf(p)
+  return true
+}
+
+/* ---------------- 代码块单行注释 ---------------- */
+
+/** 光标 / 选区所在的代码块（pre）；不在代码块内返回 null */
+function codeBlockOf(editor: HTMLElement, node: Node): HTMLElement | null {
+  let cur: Node | null = node
+  while (cur && cur !== editor) {
+    if (cur.nodeType === Node.ELEMENT_NODE && (cur as HTMLElement).tagName === 'PRE') {
+      return cur as HTMLElement
+    }
+    cur = cur.parentNode
+  }
+  return null
+}
+
+/** 代码块 DOM → 行文本（<br> 为换行；零宽锚点不计入） */
+function codeLineTexts(code: HTMLElement): string[] {
+  const lines: string[] = ['']
+  const walk = (node: Node): void => {
+    for (const child of Array.from(node.childNodes)) {
+      if (child.nodeType === Node.ELEMENT_NODE) {
+        if ((child as HTMLElement).tagName === 'BR') lines.push('')
+        else walk(child)
+        continue
+      }
+      const text = (child.textContent ?? '').replace(/\u200b/g, '')
+      if (text) lines[lines.length - 1] += text
+    }
+  }
+  walk(code)
+  return lines
+}
+
+/** 代码块内某位置（容器 + 偏移）对应的行号与列（皆 0 基） */
+function codeLineCol(code: HTMLElement, container: Node, offset: number): { line: number; col: number } {
+  const range = document.createRange()
+  try {
+    range.setStart(code, 0)
+    range.setEnd(container, offset)
+  } catch {
+    return { line: 0, col: 0 }
+  }
+  let line = 0
+  let col = 0
+  const frag = range.cloneContents()
+  const walk = (node: Node): void => {
+    for (const child of Array.from(node.childNodes)) {
+      if (child.nodeType === Node.ELEMENT_NODE) {
+        if ((child as HTMLElement).tagName === 'BR') {
+          line += 1
+          col = 0
+        } else {
+          walk(child)
+        }
+        continue
+      }
+      col += (child.textContent ?? '').replace(/\u200b/g, '').length
+    }
+  }
+  walk(frag)
+  return { line, col }
+}
+
+/** 用行文本重建代码块内容（与 codeTextToBrDom 的 DOM 形态保持一致） */
+function setCodeLines(code: HTMLElement, lines: string[]): void {
+  code.replaceChildren()
+  lines.forEach((line, i) => {
+    if (i > 0) code.appendChild(document.createElement('br'))
+    if (line) code.appendChild(document.createTextNode(line))
+  })
+  if (lines[lines.length - 1] === '') {
+    code.appendChild(document.createTextNode(CODE_ANCHOR))
+  }
+}
+
+/**
+ * 把光标放进代码块的第 line 行。
+ * 位置取“行内第一个字符之后”而不是行首：块内文本偏移不计算 <br>，
+ * 行首会与上一行末尾算出同一个偏移，DOM 重排后光标会被还原到上一行。
+ */
+function placeCaretInCodeLine(code: HTMLElement, line: number): void {
+  let cur = 0
+  const found: Text[] = []
+  const walk = (node: Node): void => {
+    for (const child of Array.from(node.childNodes)) {
+      if (found.length) return
+      if (child.nodeType === Node.ELEMENT_NODE) {
+        if ((child as HTMLElement).tagName === 'BR') cur += 1
+        else walk(child)
+        continue
+      }
+      if (cur === line && (child.textContent ?? '').replace(/\u200b/g, '')) {
+        found.push(child as Text)
+        return
+      }
+    }
+  }
+  walk(code)
+
+  const target = found[0] ?? null
+  const range = document.createRange()
+  if (target) {
+    range.setStart(target, Math.min(1, (target.textContent ?? '').length))
+  } else {
+    range.setStart(code, 0)
+  }
+  range.collapse(true)
+  applyRange(range)
+}
+
+/**
+ * ⌘/ ·Ctrl+/ ：给代码块内选中的行（光标所在行为单行）切换行注释 `// `。
+ * 缩进保留；已全部注释的行则取消注释；空行不参与。
+ * 不在代码块内、或选区跨出代码块时返回 false。
+ */
+export function toggleCodeComment(editor: HTMLElement): boolean {
+  const sel = getSelection()
+  if (!sel || sel.rangeCount === 0) return false
+  const range = sel.getRangeAt(0)
+  const pre = codeBlockOf(editor, range.startContainer)
+  if (!pre) return false
+  if (!pre.contains(range.endContainer)) return false
+  const code = pre.firstElementChild as HTMLElement | null
+  if (!code || code.tagName !== 'CODE') return false
+
+  const lines = codeLineTexts(code)
+  if (!lines.length) return false
+  const a = codeLineCol(code, range.startContainer, range.startOffset)
+  const b = codeLineCol(code, range.endContainer, range.endOffset)
+  let startLine = Math.min(a.line, b.line)
+  let endLine = Math.max(a.line, b.line)
+  // 选区停在下一行行首时不算这一行（用户只选到上一行末尾）
+  if (endLine > startLine && b.col === 0) endLine -= 1
+  startLine = Math.max(0, Math.min(startLine, lines.length - 1))
+  endLine = Math.max(startLine, Math.min(endLine, lines.length - 1))
+
+  // 空行不参与；范围内全是空行时只处理光标所在行
+  const targets: number[] = []
+  for (let i = startLine; i <= endLine; i++) {
+    if (lines[i].trim()) targets.push(i)
+  }
+  const use = targets.length ? targets : [startLine]
+
+  const commented = use.every((i) => /^[ \t]*\/\//.test(lines[i]))
+  for (const i of use) {
+    if (commented) {
+      lines[i] = lines[i].replace(/^([ \t]*)\/\/ ?/, '$1')
+    } else {
+      lines[i] = lines[i].replace(/^([ \t]*)/, '$1// ')
+    }
+  }
+
+  setCodeLines(code, lines)
+  placeCaretInCodeLine(code, startLine)
+  return true
+}
+
+/* ---------------- 表格 ---------------- */
+
+/** 单元格内容对齐 */
+export type CellAlign = 'left' | 'center' | 'right'
+
+export interface TableContext {
+  table: HTMLTableElement
+  row: HTMLTableRowElement
+  cell: HTMLTableCellElement
+  rowIndex: number
+  colIndex: number
+  /** 当前单元格的对齐方式（未显式设置时为 left） */
+  align: CellAlign
+}
+
+function closestTag(editor: HTMLElement, node: Node, tags: string[]): HTMLElement | null {
+  let cur: Node | null = node
+  while (cur && cur !== editor) {
+    if (cur.nodeType === Node.ELEMENT_NODE && tags.includes((cur as HTMLElement).tagName)) {
+      return cur as HTMLElement
+    }
+    cur = cur.parentNode
+  }
+  return null
+}
+
+/** 一行里的单元格（忽略杂散节点） */
+function rowCells(row: Element): HTMLTableCellElement[] {
+  return Array.from(row.children).filter(
+    (c) => c.tagName === 'TD' || c.tagName === 'TH',
+  ) as HTMLTableCellElement[]
+}
+
+/** 空单元格：放一个 <br> 作为可点击/可输入的落脚点 */
+function emptyCell(tag: 'td' | 'th'): HTMLTableCellElement {
+  const cell = document.createElement(tag) as HTMLTableCellElement
+  cell.appendChild(document.createElement('br'))
+  return cell
+}
+
+function focusCell(cell: HTMLElement | null | undefined): void {
+  if (cell) placeCaretAtStartOf(cell)
+}
+
+/** 单元格内容对齐：读内联样式，未设置为 left */
+export function cellAlign(cell: HTMLElement): CellAlign {
+  const v = (cell.style.textAlign || '').toLowerCase()
+  return v === 'center' || v === 'right' ? v : 'left'
+}
+
+/** 写对齐：左对齐不写字面样式，保持存储干净 */
+function applyCellAlign(cell: HTMLElement, align: CellAlign): void {
+  if (align === 'left') cell.style.removeProperty('text-align')
+  else cell.style.textAlign = align
+  if (!cell.getAttribute('style')) cell.removeAttribute('style')
+}
+
+/**
+ * 按“表格 + 行列索引”还原上下文：行列操作据此执行，
+ * 这样即使点击按钮时编辑器已失焦、光标丢失，操作依然生效。
+ */
+export function tableIndex(
+  table: HTMLTableElement,
+  rowIndex: number,
+  colIndex: number,
+): TableContext | null {
+  const rows = Array.from(table.querySelectorAll('tr')) as HTMLTableRowElement[]
+  if (!rows.length) return null
+  const row = rows[Math.max(0, Math.min(rowIndex, rows.length - 1))]
+  if (!row) return null
+  const cells = rowCells(row)
+  if (!cells.length) return null
+  const cell = cells[Math.max(0, Math.min(colIndex, cells.length - 1))]
+  if (!cell) return null
+  return {
+    table,
+    row,
+    cell,
+    rowIndex: rows.indexOf(row),
+    colIndex: cells.indexOf(cell),
+    align: cellAlign(cell),
+  }
+}
+
+/** 光标所在的表格 / 行 / 单元格；不在表格内返回 null */
+export function tableContext(editor: HTMLElement): TableContext | null {
+  const sel = getSelection()
+  if (!sel || !sel.anchorNode || !editor.contains(sel.anchorNode)) return null
+  const cell = closestTag(editor, sel.anchorNode, ['TD', 'TH']) as HTMLTableCellElement | null
+  if (!cell) return null
+  const row = cell.parentElement as HTMLTableRowElement | null
+  const table = closestTag(editor, cell, ['TABLE']) as HTMLTableElement | null
+  if (!row || !table) return null
+  const rows = Array.from(table.querySelectorAll('tr'))
+  return {
+    table,
+    row,
+    cell,
+    rowIndex: rows.indexOf(row),
+    colIndex: rowCells(row).indexOf(cell),
+    align: cellAlign(cell),
+  }
+}
+
+/** 生成 rows × cols 的表格（首行为表头 th） */
+export function buildTable(rows: number, cols: number): HTMLTableElement {
+  const table = document.createElement('table')
+  const tbody = document.createElement('tbody')
+  for (let r = 0; r < rows; r++) {
+    const tr = document.createElement('tr')
+    for (let c = 0; c < cols; c++) tr.appendChild(emptyCell(r === 0 ? 'th' : 'td'))
+    tbody.appendChild(tr)
+  }
+  table.appendChild(tbody)
+  return table
+}
+
+/** 在光标块之后插入表格，光标进入第一个单元格 */
+export function insertTable(editor: HTMLElement, rows: number, cols: number): boolean {
+  const rowCount = Math.max(1, Math.min(30, Math.floor(rows) || 1))
+  const colCount = Math.max(1, Math.min(15, Math.floor(cols) || 1))
+  const table = buildTable(rowCount, colCount)
+  const block = resolveBlock(editor)
+  if (block) block.after(table)
+  else editor.appendChild(table)
+  // 表格后保证有一个空段落：既是继续写正文的落点，也让表格末尾不再“顶到文档底”
+  const next = table.nextElementSibling as HTMLElement | null
+  if (!next) table.after(newParagraph())
+  focusCell(table.querySelector('th, td') as HTMLElement | null)
+  return true
+}
+
+/** 在给定行的上 / 下方插入一行（不依赖光标） */
+export function insertTableRowAt(ctx: TableContext, where: 'above' | 'below'): boolean {
+  const tr = document.createElement('tr')
+  const isHeader = rowCells(ctx.row)[0]?.tagName === 'TH'
+  const cols = Math.max(1, rowCells(ctx.row).length)
+  for (let i = 0; i < cols; i++) tr.appendChild(emptyCell(isHeader ? 'th' : 'td'))
+  if (where === 'above') ctx.row.before(tr)
+  else ctx.row.after(tr)
+  const cells = rowCells(tr)
+  focusCell(cells[Math.min(ctx.colIndex, cells.length - 1)])
+  return true
+}
+
+/** 删除给定行（只剩一行时删除整张表格，不依赖光标） */
+export function deleteTableRowAt(ctx: TableContext): boolean {
+  const rows = Array.from(ctx.table.querySelectorAll('tr'))
+  if (rows.length <= 1) return deleteTableAt(ctx)
+  ctx.row.remove()
+  const rest = Array.from(ctx.table.querySelectorAll('tr'))
+  const target = rest[Math.min(ctx.rowIndex, rest.length - 1)] as HTMLTableRowElement
+  const cells = rowCells(target)
+  focusCell(cells[Math.min(ctx.colIndex, cells.length - 1)])
+  return true
+}
+
+/** 在给定列的左 / 右侧插入一列（不依赖光标） */
+export function insertTableColumnAt(ctx: TableContext, where: 'left' | 'right'): boolean {
+  for (const row of Array.from(ctx.table.querySelectorAll('tr'))) {
+    const cells = rowCells(row)
+    const ref = cells[Math.min(ctx.colIndex, cells.length - 1)]
+    if (!ref) continue
+    const cell = emptyCell(ref.tagName === 'TH' ? 'th' : 'td')
+    if (where === 'left') ref.before(cell)
+    else ref.after(cell)
+  }
+  const cells = rowCells(ctx.row)
+  focusCell(cells[where === 'left' ? ctx.colIndex : ctx.colIndex + 1] ?? cells[0])
+  return true
+}
+
+/** 删除给定列（只剩一列时删除整张表格，不依赖光标） */
+export function deleteTableColumnAt(ctx: TableContext): boolean {
+  if (rowCells(ctx.row).length <= 1) return deleteTableAt(ctx)
+  for (const row of Array.from(ctx.table.querySelectorAll('tr'))) {
+    const cells = rowCells(row)
+    cells[Math.min(ctx.colIndex, cells.length - 1)]?.remove()
+  }
+  const cells = rowCells(ctx.row)
+  focusCell(cells[Math.min(ctx.colIndex, cells.length - 1)] ?? cells[0])
+  return true
+}
+
+/** 删除整张表格，光标落到表格后的块（没有则新建一段，不依赖光标） */
+export function deleteTableAt(ctx: TableContext): boolean {
+  const table = ctx.table
+  const parent = table.parentElement
+  const next = table.nextElementSibling as HTMLElement | null
+  table.remove()
+  if (next && next.isConnected) {
+    placeCaretAtStartOf(next)
+  } else {
+    const p = newParagraph()
+    if (parent) parent.appendChild(p)
+    placeCaretAtStartOf(p)
+  }
+  return true
+}
+
+/**
+ * Tab / Shift+Tab：移动到下一个（上一个）单元格；
+ * 在最后一个单元格按 Tab 时新增一行（Word / Excel 手感）。
+ */
+export function tableMoveCell(editor: HTMLElement, backwards = false): boolean {
+  const ctx = tableContext(editor)
+  if (!ctx) return false
+  const cells = Array.from(ctx.table.querySelectorAll('td, th')) as HTMLElement[]
+  const idx = cells.indexOf(ctx.cell)
+  if (idx < 0) return false
+  const next = idx + (backwards ? -1 : 1)
+  if (next >= 0 && next < cells.length) {
+    focusCell(cells[next])
+    return true
+  }
+  if (backwards) {
+    focusCell(cells[cells.length - 1])
+    return true
+  }
+  const rows = Array.from(ctx.table.querySelectorAll('tr'))
+  const lastRow = rows[rows.length - 1] as HTMLTableRowElement
+  const cols = Math.max(1, rowCells(lastRow).length)
+  const tr = document.createElement('tr')
+  for (let i = 0; i < cols; i++) tr.appendChild(emptyCell('td'))
+  lastRow.after(tr)
+  focusCell(rowCells(tr)[0])
+  return true
+}
+
+/** Enter：跳到下一行同一列；已在最后一行则新增一行 */
+export function tableEnterNext(editor: HTMLElement): boolean {
+  const ctx = tableContext(editor)
+  if (!ctx) return false
+  const rows = Array.from(ctx.table.querySelectorAll('tr'))
+  if (ctx.rowIndex >= rows.length - 1) {
+    const cols = Math.max(1, rowCells(ctx.row).length)
+    const tr = document.createElement('tr')
+    for (let i = 0; i < cols; i++) tr.appendChild(emptyCell('td'))
+    ctx.row.after(tr)
+    focusCell(rowCells(tr)[Math.min(ctx.colIndex, cols - 1)])
+    return true
+  }
+  const nextRow = rows[ctx.rowIndex + 1] as HTMLTableRowElement
+  const cells = rowCells(nextRow)
+  focusCell(cells[Math.min(ctx.colIndex, cells.length - 1)])
+  return true
+}
+
+/** 光标所在行的上 / 下方插入一行 */
+export function insertTableRow(editor: HTMLElement, where: 'above' | 'below'): boolean {
+  const ctx = tableContext(editor)
+  return ctx ? insertTableRowAt(ctx, where) : false
+}
+
+/** 删除光标所在行（只剩一行时删除整张表格） */
+export function deleteTableRow(editor: HTMLElement): boolean {
+  const ctx = tableContext(editor)
+  return ctx ? deleteTableRowAt(ctx) : false
+}
+
+/** 在光标所在列的左 / 右侧插入一列 */
+export function insertTableColumn(editor: HTMLElement, where: 'left' | 'right'): boolean {
+  const ctx = tableContext(editor)
+  return ctx ? insertTableColumnAt(ctx, where) : false
+}
+
+/** 删除光标所在列（只剩一列时删除整张表格） */
+export function deleteTableColumn(editor: HTMLElement): boolean {
+  const ctx = tableContext(editor)
+  return ctx ? deleteTableColumnAt(ctx) : false
+}
+
+/** 删除整张表格（光标版） */
+export function deleteTable(editor: HTMLElement): boolean {
+  const ctx = tableContext(editor)
+  return ctx ? deleteTableAt(ctx) : false
+}
+
+/** 选区覆盖到的单元格（无跨格选区时返回空数组） */
+function cellsInSelection(table: HTMLTableElement): HTMLElement[] {
+  const sel = getSelection()
+  if (!sel || sel.rangeCount === 0) return []
+  const range = sel.getRangeAt(0)
+  if (range.collapsed) return []
+  const all = Array.from(table.querySelectorAll('td, th')) as HTMLElement[]
+  try {
+    return all.filter((cell) => range.intersectsNode(cell))
+  } catch {
+    // 个别环境不支持 intersectsNode：退化为“两端之间的单元格”
+    const startCell = closestTag(table, range.startContainer, ['TD', 'TH'])
+    const endCell = closestTag(table, range.endContainer, ['TD', 'TH'])
+    if (!startCell || !endCell) return []
+    const i = all.indexOf(startCell)
+    const j = all.indexOf(endCell)
+    if (i < 0 || j < 0) return []
+    return all.slice(Math.min(i, j), Math.max(i, j) + 1)
+  }
+}
+
+/** 单元格在表格里的位置（行列索引，DOM 重排后依然可用） */
+export interface TableCellIndex {
+  row: number
+  col: number
+}
+
+/**
+ * 当前表格里“要作用”的单元格索引：
+ * 有跨格选区时是选中的每一格，否则就是光标所在的一格。
+ * 返回索引（而非元素）是为了在编辑器失焦、DOM 被重排后仍能准确定位。
+ */
+export function tableSelectedCells(
+  editor: HTMLElement,
+): { table: HTMLTableElement; cells: TableCellIndex[] } | null {
+  const ctx = tableContext(editor)
+  if (!ctx) return null
+  const selected = cellsInSelection(ctx.table)
+  const list: HTMLTableCellElement[] = selected.length
+    ? (selected as HTMLTableCellElement[])
+    : [ctx.cell]
+  const rows = Array.from(ctx.table.querySelectorAll('tr'))
+  const cells = list
+    .map((cell) => {
+      const row = cell.parentElement as HTMLTableRowElement
+      return { row: rows.indexOf(row), col: rowCells(row).indexOf(cell) }
+    })
+    .filter((c) => c.row >= 0 && c.col >= 0)
+  return cells.length ? { table: ctx.table, cells } : null
+}
+
+/** 按索引设置对齐（不依赖选区，点击按钮导致选区丢失时用它） */
+export function setTableCellsAlign(
+  table: HTMLTableElement,
+  cells: TableCellIndex[],
+  align: CellAlign,
+): boolean {
+  let done = 0
+  for (const { row, col } of cells) {
+    const ctx = tableIndex(table, row, col)
+    if (!ctx) continue
+    applyCellAlign(ctx.cell, align)
+    done++
+  }
+  return done > 0
+}
+
+/**
+ * 设置单元格内容对齐：有跨格选区时作用于选中的每个单元格，
+ * 否则只作用于光标所在单元格。左对齐 = 清除样式（存储保持干净）。
+ */
+export function setTableCellAlignAt(ctx: TableContext, align: CellAlign): boolean {
+  const targets = cellsInSelection(ctx.table)
+  const list = targets.length ? targets : [ctx.cell as HTMLElement]
+  for (const cell of list) applyCellAlign(cell, align)
+  placeCaretAtStartOf(ctx.cell)
+  return true
+}
+
+/** 设置光标所在（或选中范围内）单元格的对齐 */
+export function setTableCellAlign(editor: HTMLElement, align: CellAlign): boolean {
+  const ctx = tableContext(editor)
+  return ctx ? setTableCellAlignAt(ctx, align) : false
+}
+
+/** 整张表格的所有单元格对齐（如需要整表统一时使用） */
+export function setTableAlignAt(ctx: TableContext, align: CellAlign): boolean {
+  for (const cell of Array.from(ctx.table.querySelectorAll('td, th'))) {
+    applyCellAlign(cell as HTMLElement, align)
+  }
+  placeCaretAtStartOf(ctx.cell)
+  return true
+}
+
+/** Shift+Enter：单元格内换行 */
+export function insertCellLineBreak(editor: HTMLElement): boolean {
+  const ctx = tableContext(editor)
+  if (!ctx) return false
+  const caret = getCaretRange(editor)
+  if (!caret) return false
+  caret.deleteContents()
+  const br = document.createElement('br')
+  caret.insertNode(br)
+  const after = document.createRange()
+  after.setStartAfter(br)
+  after.collapse(true)
+  applyRange(after)
   return true
 }
 
@@ -1652,6 +2328,24 @@ export function pasteTextInto(editor: HTMLElement, text: string): void {
     const lastNode = frag.lastChild
     range.insertNode(frag)
     if (lastNode) selectCollapsedAfter(lastNode)
+    return
+  }
+
+  // 表格单元格内：整段文本按 <br> 换行塞进当前单元格
+  if (tableContext(editor)) {
+    const cellLines = clean
+      .split('\n')
+      .map((line) => line.replace(/[ \t\u00a0]+$/, ''))
+    const cellFrag = document.createDocumentFragment()
+    cellLines.forEach((line, i) => {
+      if (i > 0) cellFrag.appendChild(document.createElement('br'))
+      if (line) cellFrag.appendChild(document.createTextNode(line))
+    })
+    if (!cellFrag.childNodes.length) return
+    caret.deleteContents()
+    const lastCellNode = cellFrag.lastChild
+    caret.insertNode(cellFrag)
+    if (lastCellNode) selectCollapsedAfter(lastCellNode)
     return
   }
 

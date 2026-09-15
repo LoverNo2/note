@@ -18,6 +18,7 @@ export function escapeHtml(text: string): string {
 /** 顶层块级元素（编辑器内容容器的合法子块） */
 const BLOCK_TAGS = new Set([
   'P',
+  'TABLE',
   'H1',
   'H2',
   'H3',
@@ -120,6 +121,22 @@ function stripForeignStyles(root: HTMLElement): void {
     }
     el.removeAttribute('style')
     if (el.attributes.length === 0) unwrapEl(el)
+  }
+}
+
+/**
+ * 表格单元格只允许保留 text-align（本编辑器的“内容对齐”设置），
+ * 其它外来样式（颜色、字体、宽度……）一律清除，避免外部富文本残留。
+ */
+function keepCellAlignOnly(root: HTMLElement): void {
+  for (const cell of Array.from(root.querySelectorAll('td, th'))) {
+    if (!cell.hasAttribute('style')) continue
+    const align = (cell as HTMLElement).style.textAlign
+    if (align === 'center' || align === 'right') {
+      cell.setAttribute('style', `text-align: ${align}`)
+    } else {
+      cell.removeAttribute('style')
+    }
   }
 }
 
@@ -228,6 +245,78 @@ export function legacyTextToHtml(text: string): string {
  * - 顶层裸露的文本/行内节点 → 收拢进段落
  * - 移除空文本；内容全空时返回空字符串
  */
+/** 单元格内被视作“块级”（需要压平成带 <br> 的行内文本）的标签 */
+const CELL_BLOCK_TAGS = [
+  'p', 'div', 'ul', 'ol', 'li',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'section', 'article', 'figure', 'blockquote',
+]
+
+/**
+ * 单元格内容压平：浏览器在 contenteditable 的 td 里会生成 p/div，
+ * 而本编辑器的单元格只允许“行内文本 + 行内格式”，块级一律折成 <br> 换行。
+ */
+function flattenCellContent(cell: HTMLElement): boolean {
+  const blocks = Array.from(cell.querySelectorAll(CELL_BLOCK_TAGS.join(',')))
+  if (!blocks.length) return false
+  for (const el of blocks.reverse()) {
+    const parent = el.parentNode
+    if (!parent) continue
+    parent.insertBefore(document.createElement('br'), el)
+    while (el.firstChild) parent.insertBefore(el.firstChild, el)
+    parent.insertBefore(document.createElement('br'), el)
+    el.remove()
+  }
+  // 去掉首尾多余的换行（至少保留单元格里的一个落脚点）
+  while (cell.firstChild && (cell.firstChild as HTMLElement).nodeName === 'BR') {
+    cell.firstChild.remove()
+  }
+  while (
+    cell.lastChild &&
+    (cell.lastChild as HTMLElement).nodeName === 'BR' &&
+    cell.lastChild.previousSibling
+  ) {
+    cell.lastChild.remove()
+  }
+  if (!cell.firstChild) cell.appendChild(document.createElement('br'))
+  return true
+}
+
+/**
+ * 表格结构保底：删掉空行/空表，规整单元格内容，
+ * 保证「每个单元格至少有一个 <br> 落脚点」——否则空单元格点不进去。
+ */
+function tidyTableStructure(table: HTMLElement): boolean {
+  let changed = false
+  for (const cell of Array.from(
+    table.querySelectorAll<HTMLElement>('td, th'),
+  )) {
+    if (flattenCellContent(cell)) changed = true
+    if (cell.querySelector('br') === null && !(cell.textContent ?? '').trim()) {
+      cell.replaceChildren(document.createElement('br'))
+      changed = true
+    }
+  }
+  for (const row of Array.from(table.querySelectorAll('tr'))) {
+    if (row.querySelector('td, th') === null) {
+      row.remove()
+      changed = true
+    }
+  }
+  if (table.querySelector('tr td, tr th') === null) {
+    table.remove()
+    changed = true
+  }
+  return changed
+}
+
+/** 导出给编辑器用：“单元格内不允许块级内容”的同一套规则 */
+export function normalizeTableStructure(root: HTMLElement): void {
+  for (const table of Array.from(root.querySelectorAll('table'))) {
+    tidyTableStructure(table)
+  }
+}
+
 export function normalizeHtml(html: string): string {
   const body = parseBody(html)
   if (!body) return ''
@@ -296,6 +385,13 @@ export function normalizeHtml(html: string): string {
       body.appendChild(el)
       continue
     }
+    if (tag === 'TABLE') {
+      tidyTableStructure(el)
+      if (el.querySelector('tr td, tr th') === null) continue // 空表已删除
+      hasVisible = true
+      body.appendChild(el)
+      continue
+    }
     const text = el.textContent ?? ''
     // 空段落 <p> 是合法的结构空行，保留；标题/列表等空块则清除
     const visible = tag === 'P' || tag === 'PRE'
@@ -328,6 +424,7 @@ export function normalizeHtml(html: string): string {
     }
   }
   stripForeignStyles(body)
+  keepCellAlignOnly(body)
   // 排版包裹标记（中文字距 / 英文间隔）只用于渲染层，不写入存储
   for (const el of Array.from(
     body.querySelectorAll('span.cjk, span.latin, span.hl, span.token'),
@@ -370,6 +467,7 @@ export function normalizeHtml(html: string): string {
     const el = n as HTMLElement
     if (el.tagName === 'IMG' || el.tagName === 'HR') return true
     if (el.tagName === 'PRE') return true
+    if (el.tagName === 'TABLE') return true
     return !!(el.textContent ?? '').trim()
   })
   if (!hasMeaning) return ''
@@ -398,6 +496,7 @@ export function textFromHtml(html: string): string {
     'A',
     'MARK',
   ])
+  let rowStart = true
   const walk = (node: Node): void => {
     for (const child of Array.from(node.childNodes)) {
       if (child.nodeType === Node.TEXT_NODE) {
@@ -407,6 +506,15 @@ export function textFromHtml(html: string): string {
         const tag = el.tagName
         if (tag === 'BR') {
           parts.push('\n')
+        } else if (tag === 'TD' || tag === 'TH') {
+          // 单元格之间用制表符分隔，摘要里能看出列结构（行首不加）
+          if (!rowStart && parts.length) parts.push('\t')
+          rowStart = false
+          walk(el)
+        } else if (tag === 'TR' || tag === 'THEAD' || tag === 'TBODY') {
+          parts.push('\n')
+          rowStart = true
+          walk(el)
         } else if (INLINE_TAGS.has(tag)) {
           walk(el)
         } else {
@@ -428,6 +536,12 @@ export function textFromHtml(html: string): string {
 /** 复制/粘贴时允许保留的标签（块 + 行内样式语义） */
 const PASTE_SAFE_TAGS = new Set([
   "P",
+  "TABLE",
+  "THEAD",
+  "TBODY",
+  "TR",
+  "TD",
+  "TH",
   "H1",
   "H2",
   "H3",
@@ -512,10 +626,14 @@ export function sanitizeHtml(html: string): string {
         }
         continue
       }
-      // 白名单标签：去掉全部属性（含 class/style/href），只保留语义
+      // 白名单标签：去掉全部属性（含 class/style/href），只保留语义。
+      // 例外：表格单元格的 text-align 是本编辑器的“内容对齐”设置，需要保留。
+      const isCell = tag === 'TD' || tag === 'TH'
+      const cellAlign = isCell ? cEl.style.textAlign : ''
       for (const attr of Array.from(cEl.attributes)) {
         cEl.removeAttribute(attr.name)
       }
+      if (cellAlign) cEl.style.textAlign = cellAlign
       clean(cEl)
     }
   }

@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import type { ToolbarUi } from "../editor/blocks";
 import Icon from "./Icon.vue";
 import type { IconName } from "./Icon.vue";
+import TableMenu from "./TableMenu.vue";
 
 /** 工具条能触发的动作（与 NoteEditor.exec 一一对应） */
 export type ToolbarAction =
@@ -32,6 +33,13 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "exec", action: ToolbarAction): void;
   (e: "toggle-outline"): void;
+  (e: "table-insert", rows: number, cols: number): void;
+  (e: "table-row", where: "above" | "below"): void;
+  (e: "table-col", where: "left" | "right"): void;
+  (e: "table-delete-row"): void;
+  (e: "table-delete-col"): void;
+  (e: "table-delete"): void;
+  (e: "table-align", align: "left" | "center" | "right"): void;
 }>();
 
 function isBlockActive(key: ToolbarAction): boolean {
@@ -162,6 +170,19 @@ function iconOf(action: ToolbarAction): IconName {
     >
       <Icon :name="iconOf('orderedList')" />
     </button>
+
+    <!-- 表格：光标不在表格内时插入，已在表格内则增删行列 -->
+    <TableMenu
+      :in-table="props.ui.inTable"
+      :table-align="props.ui.tableAlign"
+      @insert="(r, c) => emit('table-insert', r, c)"
+      @row="(where) => emit('table-row', where)"
+      @col="(where) => emit('table-col', where)"
+      @delete-row="emit('table-delete-row')"
+      @delete-col="emit('table-delete-col')"
+      @delete-table="emit('table-delete')"
+      @align="(a) => emit('table-align', a)"
+    />
 
     <button
       class="btn"
