@@ -1,7 +1,0 @@
-{
-  "id": "zztmptablecheck",
-  "title": "ZZ临时表格验证",
-  "content": "<pre><code>if (x) {\n\t\treturn x;\n\t}\n\n\n\n\nfoo();\nbar();</code></pre><p>正文</p>",
-  "createdAt": "2026-09-16T09:54:25.274643Z",
-  "updatedAt": "2026-09-16T09:54:25.274643Z"
-}
