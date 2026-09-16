@@ -13,7 +13,8 @@ import type { ToolbarAction } from "./NoteToolbar.vue";
 import NoteOutline from "./NoteOutline.vue";
 import { bgToCss, useNoteStyles } from "../composables/useNoteStyles";
 import type { BlockKind, InlineMark, ToolbarUi } from "../editor/blocks";
-import { highlightCodeBlocks } from "../editor/highlight";
+import { highlightCodeBlocks, isBlockHighlighted } from "../editor/highlight";
+import { formatJavaScript, formatJavaScriptWithRepair } from "../editor/prettierFormat";
 
 /** 去掉代码高亮标记（复制出去的内容保持纯代码） */
 function unwrapTokenSpans(root: HTMLElement): void {
@@ -36,6 +37,9 @@ import {
   ensureStartParagraph,
   flattenPreElement,
   focusEditorStart,
+  codeBlockText,
+  formatCodeText,
+  setCodeBlockText,
   getCaretRange,
   healStrayTopLevelText,
   handleEnterKey,
@@ -331,6 +335,7 @@ function syncNoteFromDom(): void {
   }
   markEdited();
   updateEmptyClass();
+  scheduleHighlightPending(); // 粘贴/撤销/增删块之后补齐漏色
 }
 
 function updateEmptyClass(): void {
@@ -371,6 +376,7 @@ function loadContent(): void {
   snapshotCurrent();
   refreshUi();
   refreshOutline();
+  scheduleHighlightPending(); // 兜底：把任何漏色的代码块补齐
 }
 
 /** 输入防抖：停顿后同步数据 + 记一次快照 */
@@ -382,11 +388,42 @@ function scheduleHighlight(): void {
     const el = contentEl.value;
     if (!el || composing) return;
     const block = resolveBlock(el);
-    if (!block || block.tagName !== "PRE") return;
+    if (!block || block.tagName !== "PRE") {
+      scheduleHighlightPending(); // 光标不在代码块里，也把漏色的块补上
+      return;
+    }
     const caret = caretAnchor(el);
     highlightCodeBlocks(el, block);
     if (caret) restoreCaretAnchor(el, caret);
+    scheduleHighlightPending(); // 顺带补齐别的漏色块
   }, 350);
+}
+
+/**
+ * 补漏：把“有内容却还没着色”的代码块补上高亮。
+ * 输入时的即时高亮只处理光标所在块，新增/粘贴/撤销产生的其它块可能一直是灰的，
+ * 这里在安静下来后统一补齐（跳过光标所在块，避免干扰正在输入的地方）。
+ */
+let highlightPendingTimer: number | undefined;
+let highlightPendingToken = 0;
+
+function scheduleHighlightPending(delay = 400): void {
+  window.clearTimeout(highlightPendingTimer);
+  const token = ++highlightPendingToken;
+  highlightPendingTimer = window.setTimeout(() => {
+    if (token !== highlightPendingToken) return;
+    const el = contentEl.value;
+    if (!el || composing) return;
+    const pending = Array.from(el.querySelectorAll("pre")).filter(
+      (pre) =>
+        (pre.textContent ?? "").trim() !== "" &&
+        !isBlockHighlighted(pre as HTMLElement),
+    );
+    if (!pending.length) return;
+    const caret = caretAnchor(el);
+    for (const pre of pending) highlightCodeBlocks(el, pre as HTMLElement);
+    if (caret) restoreCaretAnchor(el, caret);
+  }, delay);
 }
 
 function scheduleSync(): void {
@@ -560,6 +597,38 @@ function afterDomChange(): void {
   scheduleOutline();
 }
 
+/**
+ * 保存前整理代码块格式（⌘S / 点保存时触发）：
+ * 行首 Tab → 4 空格、去掉行尾分号、连续 3 行以上空行折成 1 行。
+ * 内容被重建后重新高亮，并用锚点把光标放回原处。
+ */
+/**
+ * 保存前整理代码块格式：
+ * - JavaScript（能被 babel 解析）交给 Prettier（4 空格缩进、不写行尾分号、按 120 列折行）；
+ * - 其它语言/语法不合法时退回简单规则（Tab→4 空格、去行尾分号、折叠多余空行）。
+ */
+async function formatCodeOnSave(): Promise<void> {
+  const el = contentEl.value;
+  if (!el) return;
+  const caret = caretAnchor(el);
+  let changed = false;
+  for (const pre of Array.from(el.querySelectorAll("pre")) as HTMLElement[]) {
+    const text = codeBlockText(pre);
+    if (!text.trim()) continue;
+    // 先直接交给 Prettier；整段因“缺分号”类错误解析不了时，按报错位置补分号重试
+    let pretty = await formatJavaScript(text);
+    if (pretty === null) pretty = await formatJavaScriptWithRepair(text);
+    const next = pretty ?? formatCodeText(text);
+    if (next === text) continue;
+    setCodeBlockText(pre, next);
+    changed = true;
+  }
+  if (!changed) return;
+  highlightCodeBlocks(el);
+  if (caret) restoreCaretAnchor(el, caret);
+  syncNoteFromDom();
+}
+
 /* ================= 表格 ================= */
 
 /** 最近一次“光标在表格内”的位置：点击工具条按钮会让编辑器失焦、光标可能丢失，
@@ -685,6 +754,8 @@ function tableDelete(): void {
   afterDomChange();
   toast("已删除表格");
 }
+
+defineExpose({ formatCodeOnSave });
 
 /* ================= 编辑器键盘 / 剪贴板 ================= */
 

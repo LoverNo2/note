@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import AppBar from './components/AppBar.vue'
 import NoteEditor from './components/NoteEditor.vue'
 import { useNotes } from './composables/useNotes'
@@ -17,7 +17,11 @@ function onCreateFirst(): void {
   toast('已新建笔记', 'success')
 }
 
+const editorRef = ref<InstanceType<typeof NoteEditor> | null>(null)
+
 async function doSaveToProject(): Promise<void> {
+  // 保存前先整理代码块格式：JavaScript 走 Prettier，其它语言用简单规则
+  await editorRef.value?.formatCodeOnSave()
   const result = await saveToProject()
   if (result === 'ok') {
     toast('已保存到项目 notes/ 目录', 'success')
@@ -97,7 +101,7 @@ onBeforeUnmount(() => {
 
     <main class="app__main">
       <!-- 切换笔记时通过 key 重建编辑区，保证输入焦点与高度状态干净 -->
-      <NoteEditor v-if="currentNote" :key="currentNote.id" />
+      <NoteEditor v-if="currentNote" ref="editorRef" :key="currentNote.id" />
 
       <section v-else class="welcome">
         <span class="welcome__logo">笔记本</span>

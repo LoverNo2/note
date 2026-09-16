@@ -136,7 +136,9 @@ export function caretAnchor(editor: HTMLElement): CaretAnchor | null {
     return { block: blockIndex, offset: 0 }
   }
   const offset = blockOffsetAt(block, sel.anchorNode, sel.anchorOffset)
-  return { block: blockIndex, offset: offset ?? 0 }
+  // 定位不到就返回 null：宁可不恢复光标，也不要把它错误地放到块首
+  if (offset === null) return null
+  return { block: blockIndex, offset }
 }
 
 /** 一个节点的偏移权重：文本字符数、<br> 与单元格边界各 1 */
@@ -164,12 +166,21 @@ function nodeWeight(node: Node): number {
 function blockOffsetAt(block: HTMLElement, container: Node, offset: number): number | null {
   let total = 0
   let found: number | null = null
+  // 光标停在块元素自身的边界上（Chrome 在内容末尾常这样表达）：
+  // 按“前 offset 个子节点的权重”折算，否则会找不到容器而被当成偏移 0（表现为光标跳回块首）
+  if (container === block) {
+    const n = Math.min(offset, block.childNodes.length)
+    for (let i = 0; i < n; i++) total += nodeWeight(block.childNodes[i])
+    return total
+  }
   const walk = (node: Node): void => {
     for (const child of Array.from(node.childNodes)) {
       if (found !== null) return
       if (child === container) {
         if (child.nodeType === Node.TEXT_NODE) {
-          found = total + offset
+          // 光标 offset 按原始字符计，锚点里的零宽空格不占偏移，先换算掉
+          const raw = child.textContent ?? ''
+          found = total + raw.slice(0, offset).replace(/\u200b/g, '').length
         } else {
           const tag = (child as HTMLElement).tagName
           // 光标停在元素边界上（如空单元格）：偏移 0 表示“跨入这个元素”
@@ -1407,6 +1418,134 @@ export function toggleCodeComment(editor: HTMLElement): boolean {
   setCodeLines(code, lines)
   placeCaretInCodeLine(code, startLine)
   return true
+}
+
+/* ---------------- 代码块：保存时的格式整理 ---------------- */
+
+export interface CodeFormatOptions {
+  /** 行首缩进里的 Tab 换成几个空格（0 = 不处理） */
+  tabSize: number
+  /** 连续 3 行以上的空行折成 1 行（1~2 行原样保留） */
+  collapseBlankLines: boolean
+  /** 去掉行尾分号（保留其后的空白） */
+  stripTrailingSemicolon: boolean
+  /**
+   * 缩进等比例归一：该块行首最小缩进单位若小于 tabSize 且能整除 tabSize，
+   * 就把各行的缩进按同一比例放大到 tabSize（2→4、4→8、6→12…），结构不变。
+   */
+  normalizeIndent: boolean
+}
+
+export const CODE_FORMAT: CodeFormatOptions = {
+  tabSize: 4,
+  collapseBlankLines: true,
+  stripTrailingSemicolon: true,
+  normalizeIndent: true,
+}
+
+/**
+ * 代码文本整理（纯函数，便于测试）：
+ *  - 行首缩进的 Tab → N 个空格（行内的 Tab 不动，避免破坏对齐）
+ *  - 行尾分号去掉（分号后的尾随空白保留）
+ *  - 连续 3 行以上空行折成 1 行
+ */
+/**
+ * 缩进等比例归一（纯函数）。
+ * 只在「最小缩进单位 < tabSize 且能整除 tabSize」时动手，且只映射
+ * 「恰好是最小单位整数倍」的行——用于对齐的长缩进会原样保留，避免破坏排版。
+ */
+export function normalizeIndentScale(
+  lines: string[],
+  tabSize: number,
+): string[] {
+  const widths: number[] = []
+  for (const line of lines) {
+    const width = line.length - line.trimStart().length
+    if (width > 0) widths.push(width)
+  }
+  if (!widths.length) return lines
+  const minUnit = Math.min(...widths)
+  if (minUnit < 2 || minUnit >= tabSize || tabSize % minUnit !== 0) return lines
+  return lines.map((line) => {
+    const width = line.length - line.trimStart().length
+    if (width <= 0 || width % minUnit !== 0) return line
+    return ' '.repeat((width / minUnit) * tabSize) + line.trimStart()
+  })
+}
+
+export function formatCodeText(src: string, opts: CodeFormatOptions = CODE_FORMAT): string {
+  let lines = src.replace(/\r\n?/g, '\n').split('\n')
+
+  if (opts.tabSize > 0) {
+    const pad = ' '.repeat(opts.tabSize)
+    lines = lines.map((line) =>
+      line.replace(/^[ \t]+/, (indent) => indent.replace(/\t/g, pad)),
+    )
+  }
+
+  if (opts.stripTrailingSemicolon) {
+    lines = lines.map((line) => line.replace(/;(\s*)$/, '$1'))
+  }
+
+  if (opts.collapseBlankLines) {
+    const out: string[] = []
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trim() !== '') {
+        out.push(lines[i])
+        continue
+      }
+      let j = i
+      while (j < lines.length && lines[j].trim() === '') j++
+      const count = j - i
+      const keep = count >= 3 ? 1 : count
+      for (let k = 0; k < keep; k++) out.push('')
+      i = j - 1
+    }
+    lines = out
+  }
+
+  if (opts.normalizeIndent) {
+    lines = normalizeIndentScale(lines, opts.tabSize)
+  }
+
+  return lines.join('\n')
+}
+
+/** 取代码块文本（<br> 视作换行，零宽锚点不计入） */
+export function codeBlockText(pre: HTMLElement): string {
+  const code = pre.firstElementChild as HTMLElement | null
+  if (!code || code.tagName !== 'CODE') return ''
+  return textContentWithBreaks(code).replace(/\u200b/g, '')
+}
+
+/** 按文本重建代码块内容（渲染标记随之清掉，调用方需重新高亮） */
+export function setCodeBlockText(pre: HTMLElement, text: string): void {
+  const code = pre.firstElementChild as HTMLElement | null
+  if (!code || code.tagName !== 'CODE') return
+  setCodeLines(code, text.split('\n'))
+}
+
+/**
+ * 对编辑器里所有代码块做格式整理（保存前调用）。
+ * 会重建代码块内容（渲染标记随之清掉，调用方需重新高亮）。
+ * 返回是否发生了改动。
+ */
+export function formatCodeBlocks(
+  editor: HTMLElement,
+  opts: CodeFormatOptions = CODE_FORMAT,
+): boolean {
+  let changed = false
+  for (const pre of Array.from(editor.querySelectorAll('pre')) as HTMLElement[]) {
+    const code = pre.firstElementChild as HTMLElement | null
+    if (!code || code.tagName !== 'CODE') continue
+    const text = codeBlockText(pre)
+    if (!text.trim()) continue
+    const next = formatCodeText(text, opts)
+    if (next === text) continue
+    setCodeLines(code, next.split('\n'))
+    changed = true
+  }
+  return changed
 }
 
 /* ---------------- 表格 ---------------- */

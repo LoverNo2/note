@@ -62,12 +62,7 @@ function patchedJavaScript(): Prism.Grammar | undefined {
   if (grammarPatched) return Prism.languages[HIGHLIGHT_LANGUAGE]
   if (!Prism.languages[HIGHLIGHT_LANGUAGE]) return undefined
   Prism.languages.insertBefore(HIGHLIGHT_LANGUAGE, 'operator', {
-    // 全大写常量 / 通知名：NOTIFICATION_ENTER_TREE、MAX
-    'upper-constant': {
-      pattern: /\b[A-Z][A-Z0-9_]*\b/,
-      alias: 'constant',
-    },
-    // 首字母大写的类名 / 静态类：SceneTree、Main、OS
+    // 首字母大写（含 OS / ClassDB 这类全大写类名）= 类名，统一一个颜色
     'class-name-static': {
       pattern: /\b[A-Z][A-Za-z0-9_]*\b/,
       alias: 'class-name',
@@ -89,6 +84,17 @@ function patchedJavaScript(): Prism.Grammar | undefined {
       alias: 'variable',
     },
   })
+  // Prism 默认把「全大写标识符」一律当常量：OS、MAX、ClassDB 都会被染成常量色。
+  // 收窄为「含下划线的全大写」才算常量（NOTIFICATION_ENTER_TREE、MODE_DISABLED），
+  // 其余全大写名字交给上面的类名规则，这样同一类事物颜色才一致。
+  const grammar = Prism.languages[HIGHLIGHT_LANGUAGE]
+  const mutable = grammar as unknown as Record<string, unknown> | undefined
+  if (mutable && mutable.constant) {
+    mutable.constant = {
+      pattern: /\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b/,
+      alias: 'constant',
+    }
+  }
   grammarPatched = true
   return Prism.languages[HIGHLIGHT_LANGUAGE]
 }

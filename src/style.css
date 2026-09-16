@@ -594,6 +594,8 @@ textarea,
 .note-content pre .token.maybe-class-name,
 .note-content pre .token.regex,
 .note-content pre .token.important {
+  /* 类名稍加重量，和函数名/关键字拉开辨识度 */
+  font-weight: 600;
   color: #c18401;
 }
 /* 参数：之前没有配色，会跟正文一样是深灰 */

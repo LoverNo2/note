@@ -627,5 +627,102 @@ console.log('L. 表格单元格对齐')
   check('L2 选中多个单元格可批量设置对齐', () => {})
 }
 
+reset()
+console.log('M. 代码块末尾的光标锚点')
+{
+  // 末尾是“空行”（<br> + 零宽锚点）：光标停在锚点里，偏移必须算对且往返不变
+  const el = editorWith('<pre><code>const a = 1<br>\u200b</code></pre>')
+  const code = el.querySelector('code')
+  const anchorText = code.lastChild // 零宽锚点文本节点
+  const sel = window.getSelection()
+  const r = document.createRange()
+  r.setStart(anchorText, 1)
+  r.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(r)
+  const a = blocks.caretAnchor(el)
+  assert.ok(a, '应能取到锚点')
+  assert.strictEqual(a.offset, 12, '11 个字符 + 1 个换行 = 12（零宽锚点不占偏移）')
+  blocks.restoreCaretAnchor(el, a)
+  const back = blocks.caretAnchor(el)
+  assert.strictEqual(back.offset, a.offset, '往返后偏移不变')
+  check('M1 代码块末尾空行的光标锚点正确（含零宽锚点换算）', () => {})
+}
+{
+  // 光标容器是块元素自身（Chrome 在末尾常这样表达）：不能退化成偏移 0
+  const el = editorWith('<pre><code>const a = 1</code></pre>')
+  const pre = el.querySelector('pre')
+  const sel = window.getSelection()
+  const r = document.createRange()
+  r.setStart(pre, pre.childNodes.length)
+  r.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(r)
+  const a = blocks.caretAnchor(el)
+  assert.ok(a, '应能取到锚点')
+  assert.notStrictEqual(a.offset, 0, '不能退化成块首')
+  assert.strictEqual(a.offset, 11, '应等于块内全部内容长度')
+  check('M2 容器为块元素自身时锚点不退化为 0', () => {})
+}
+
+reset()
+console.log('N. 保存时的代码块格式化')
+{
+  const src = 'if (x) {\n\t\treturn x;\n\t}'
+  const out = blocks.formatCodeText(src)
+  assert.strictEqual(out, 'if (x) {\n        return x\n    }')
+  check('N1 行首 Tab → 4 空格，且去掉行尾分号', () => {})
+}
+{
+  // 行内的 Tab 与分号不动
+  const src = 'const s = "a\tb";\nfoo(); bar();'
+  const out = blocks.formatCodeText(src)
+  assert.strictEqual(out, 'const s = "a\tb"\nfoo(); bar()')
+  check('N2 行内 Tab / 行内分号保持不动', () => {})
+}
+{
+  // 连续空行：≥3 折成 1，1~2 行保留
+  const src = ['a', '', '', '', 'b', '', '', '', 'c', '', '', 'd'].join('\n')
+  const out = blocks.formatCodeText(src)
+  assert.strictEqual(out, ['a', '', 'b', '', 'c', '', '', 'd'].join('\n'))
+  check('N3 连续 3 行以上空行折成 1 行', () => {})
+}
+{
+  // 幂等 + 组合
+  const src = '\tfoo();\n\n\n\n\tbar();'
+  const once = blocks.formatCodeText(src)
+  assert.strictEqual(once, '    foo()\n\n    bar()')
+  assert.strictEqual(blocks.formatCodeText(once), once)
+  check('N4 格式化幂等', () => {})
+}
+
+reset()
+console.log('O. 非 JS 代码块的缩进等比例归一')
+{
+  const src = ['function f() {', '  if (x) {', '    return 1', '  }', '}'].join('\n')
+  const out = blocks.formatCodeText(src)
+  assert.strictEqual(out, ['function f() {', '    if (x) {', '        return 1', '    }', '}'].join('\n'))
+  check('O1 最小缩进单位 2 → 等比例放大为 4 空格/级', () => {})
+}
+{
+  const src = ['function f() {', '    return 1', '}'].join('\n')
+  assert.strictEqual(blocks.formatCodeText(src), src)
+  check('O2 已是 4 空格/级则保持不动', () => {})
+}
+{
+  // 非整数倍的行（3 空格）原样保留，只动整数倍的
+  const src = ['a()', '  b()', '   c()'].join('\n')
+  const out = blocks.formatCodeText(src)
+  assert.strictEqual(out, ['a()', '    b()', '   c()'].join('\n'))
+  check('O3 非整数倍的缩进保持原样', () => {})
+}
+{
+  const one = ['a', ' b'].join('\n')
+  assert.strictEqual(blocks.formatCodeText(one), one)
+  const three = ['a', '   b', '      c'].join('\n')
+  assert.strictEqual(blocks.formatCodeText(three), three)
+  check('O4 单空格 / 3 空格（不整除 tabSize）不处理', () => {})
+}
+
 console.log(`\n结果：通过 ${passed} 项，失败 ${failed} 项`)
 process.exit(failed > 0 ? 1 : 0)
