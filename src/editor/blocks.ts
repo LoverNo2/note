@@ -1013,6 +1013,30 @@ export function flattenPreElement(pre: HTMLElement): boolean {
   return true
 }
 
+/**
+ * 保证代码块结构为 <pre><code>…</code></pre>，并返回 <code> 容器（幂等）。
+ *
+ * 粘贴到 pre 空白处、在 <code> 之外输入等操作会产生“裸 pre”——内容直接挂在
+ * pre 下而没有 <code>。此时按 `pre.firstElementChild` 取容器的旧逻辑会拿到
+ * null / <br>，表现为该代码块既不格式化（读不到文本）也不上色（找不到容器）。
+ * 这里把 pre 的所有子节点按原顺序并进一个 <code>，再把 <code> 设为唯一子节点。
+ */
+export function ensureCodeEl(pre: HTMLElement): HTMLElement | null {
+  const first = pre.firstElementChild as HTMLElement | null
+  const existing =
+    first && first.tagName === 'CODE'
+      ? first
+      : (pre.querySelector(':scope > code') as HTMLElement | null)
+  const code = existing ?? document.createElement('code')
+  for (const node of Array.from(pre.childNodes)) {
+    if (node !== code) code.appendChild(node)
+  }
+  if (pre.children.length !== 1 || pre.firstChild !== code) {
+    pre.replaceChildren(code)
+  }
+  return code
+}
+
 /** 就地整理一个块：清外来样式 + 去尾部多余 br（+ 非光标块的行尾空白）；
  *  返回是否改动 DOM */
 export function tidyBlock(
@@ -1511,17 +1535,17 @@ export function formatCodeText(src: string, opts: CodeFormatOptions = CODE_FORMA
   return lines.join('\n')
 }
 
-/** 取代码块文本（<br> 视作换行，零宽锚点不计入） */
+/** 取代码块文本（<br> 视作换行，零宽锚点不计入）；结构性异常的裸 pre 会先被规整 */
 export function codeBlockText(pre: HTMLElement): string {
-  const code = pre.firstElementChild as HTMLElement | null
-  if (!code || code.tagName !== 'CODE') return ''
+  const code = ensureCodeEl(pre)
+  if (!code) return ''
   return textContentWithBreaks(code).replace(/\u200b/g, '')
 }
 
 /** 按文本重建代码块内容（渲染标记随之清掉，调用方需重新高亮） */
 export function setCodeBlockText(pre: HTMLElement, text: string): void {
-  const code = pre.firstElementChild as HTMLElement | null
-  if (!code || code.tagName !== 'CODE') return
+  const code = ensureCodeEl(pre)
+  if (!code) return
   setCodeLines(code, text.split('\n'))
 }
 
@@ -1536,8 +1560,8 @@ export function formatCodeBlocks(
 ): boolean {
   let changed = false
   for (const pre of Array.from(editor.querySelectorAll('pre')) as HTMLElement[]) {
-    const code = pre.firstElementChild as HTMLElement | null
-    if (!code || code.tagName !== 'CODE') continue
+    const code = ensureCodeEl(pre)
+    if (!code) continue
     const text = codeBlockText(pre)
     if (!text.trim()) continue
     const next = formatCodeText(text, opts)

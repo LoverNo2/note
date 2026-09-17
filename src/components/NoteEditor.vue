@@ -34,6 +34,7 @@ import {
   deleteFirstEmptyParagraph,
   editorHasContent,
   emptyToolbarUi,
+  ensureCodeEl,
   ensureStartParagraph,
   flattenPreElement,
   focusEditorStart,
@@ -294,9 +295,12 @@ function tidyEditorDom(el: HTMLElement): void {
     const tag = child.tagName;
     if (tag === "HR") continue;
     if (tag === "PRE") {
+      // 结构性兜底：粘贴到 pre 空白处会留下“裸 pre”（内容直接挂在 pre 下、
+      // 没有 <code>），旧逻辑读不到文本 → 该块既不格式化也不上色。
+      const pre = child as HTMLElement;
+      ensureCodeEl(pre);
       // 编辑期不动代码块（重写文本会打乱光标）；仅在光标不在其中、
       // 且浏览器塞进了块级元素时才拍平（历史脏数据由加载时清理）
-      const pre = child as HTMLElement;
       const sel = window.getSelection();
       const caretInside = !!sel?.anchorNode && pre.contains(sel.anchorNode);
       // 注意：高亮用的 span.token 是正常渲染标记，不算“脏结构”，

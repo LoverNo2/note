@@ -13,6 +13,8 @@ import Prism from 'prismjs'
 // 因此其它语言包无需引入，可减小打包体积。
 import 'prismjs/components/prism-clike'
 import 'prismjs/components/prism-javascript'
+// 结构兜底：把“裸 pre”（内容直接挂在 pre 下、没有 <code>）规整回 <pre><code>
+import { ensureCodeEl } from './blocks'
 
 /** 与 blocks.ts 中一致的光标锚点（零宽空格） */
 const CODE_ANCHOR = '\u200b'
@@ -134,8 +136,8 @@ function isHighlighted(code: HTMLElement): boolean {
  * 可以用文本偏移精确恢复光标。
  */
 export function highlightCodeBlock(pre: HTMLElement): boolean {
-  const code = pre.firstElementChild as HTMLElement | null
-  if (!code || code.tagName !== 'CODE') return false
+  const code = ensureCodeEl(pre)
+  if (!code) return false
   const text = codeBlockText(code)
   if (!text.trim()) return false
   const grammar = patchedJavaScript() ?? Prism.languages.clike
@@ -165,6 +167,6 @@ export function highlightCodeBlocks(
 
 /** 该代码块是否已经高亮（供调用方判断是否需要重排） */
 export function isBlockHighlighted(pre: HTMLElement): boolean {
-  const code = pre.firstElementChild as HTMLElement | null
+  const code = ensureCodeEl(pre)
   return !!code && isHighlighted(code)
 }
