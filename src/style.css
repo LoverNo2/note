@@ -204,7 +204,7 @@ textarea,
 }
 
 ::selection {
-  background: rgba(37, 99, 235, 0.16);
+  background: var(--selection-bg);
 }
 
 /* 细滚动条 */
@@ -213,13 +213,13 @@ textarea,
   height: 10px;
 }
 *::-webkit-scrollbar-thumb {
-  background-color: rgba(24, 26, 30, 0.18);
+  background-color: var(--scroll-thumb);
   border: 3px solid transparent;
   border-radius: 999px;
   background-clip: padding-box;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(24, 26, 30, 0.32);
+  background-color: var(--scroll-thumb-hover);
 }
 *::-webkit-scrollbar-track {
   background: transparent;
@@ -897,5 +897,335 @@ textarea,
   .note-content {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+}
+
+/* ============================================================
+   主题变量：原来写死在规则 / 组件里的颜色，抽成变量，供深色主题覆盖
+   ============================================================ */
+:root {
+  /* 选区 / 滚动条 */
+  --selection-bg: rgba(37, 99, 235, 0.16);
+  --scroll-thumb: rgba(24, 26, 30, 0.18);
+  --scroll-thumb-hover: rgba(24, 26, 30, 0.32);
+
+  /* 常规交互高光（浅色下是叠白，深色下改为极弱的叠白） */
+  --surface-hl-soft: rgba(255, 255, 255, 0.25);
+  --surface-hl: rgba(255, 255, 255, 0.32);
+  --surface-hl-strong: rgba(255, 255, 255, 0.5);
+
+  /* 纸张卡片 */
+  --paper-bg: #fffef8;
+  --paper-shadow:
+    18px 18px 36px rgba(95, 100, 110, 0.32),
+    -14px -14px 28px rgba(255, 255, 255, 0.9);
+
+  /* 行内代码 / 代码块（外观预设类据此取色） */
+  --inline-code-bg: rgba(55, 53, 47, 0.075);
+  --code-bg: #f7f7f5;
+  --code-bg-inset: #f6f6f2;
+  --code-inset-shadow:
+    inset 2px 2px 6px rgba(120, 115, 100, 0.18),
+    inset -2px -2px 6px rgba(255, 255, 255, 0.95);
+  --code-bg-accent: #f8f8f5;
+  --code-bg-terminal: #21252c;
+
+  /* 列表符号 */
+  --marker-color: #000;
+
+  /* 样式设置面板：滑块轨道 / 分隔线 / 蓝底按钮文字 */
+  --track-bg: rgba(24, 26, 30, 0.14);
+  --track-inset: inset 0 1px 2px rgba(24, 26, 30, 0.16);
+  --sep-line: rgba(24, 26, 30, 0.09);
+  --on-accent: #fff;
+
+  /* 顶栏操作提示文字 */
+  --msg-success: #14875c;
+  --msg-error: #c73f3a;
+}
+
+/* ============================================================
+   黑夜模式
+   —— 整块包在 @media screen 内：打印 / 导出 PDF 时这些规则不生效，
+      纸张、正文墨色、代码块外观自动回到浅色（用户配置的原样）。
+   ============================================================ */
+@media screen {
+  :root[data-theme='dark'] {
+    color-scheme: dark;
+
+    /* 背景 */
+    --bg-canvas: #1b1e23;
+    --bg-sidebar: #171a1e;
+    --bg-hover: rgba(255, 255, 255, 0.06);
+    --bg-active: rgba(255, 255, 255, 0.11);
+    --bg-soft: #23272e;
+
+    /* 边框 */
+    --border: #343a43;
+    --border-strong: #454c57;
+
+    /* 文字 */
+    --text-strong: #e7e9ed;
+    --text-mid: #a8afba;
+    --text-faint: #7b828d;
+
+    /* 强调色：深底上略作提亮，保持对比度 */
+    --accent: #6b93f5;
+    --accent-hover: #8aa9f8;
+    --accent-soft: rgba(107, 147, 245, 0.16);
+
+    /* 危险 / 成功 / 顶栏提示 */
+    --danger: #ef6f6f;
+    --danger-soft: rgba(239, 111, 111, 0.16);
+    --success: #3ecf8e;
+    --msg-success: #4ecf9a;
+    --msg-error: #f0827c;
+
+    /* 新拟态：深底上「深投影 + 极弱白光」 */
+    --shadow-pop:
+      12px 12px 26px rgba(0, 0, 0, 0.55),
+      -10px -10px 22px rgba(255, 255, 255, 0.05);
+    --neu-raise:
+      5px 5px 12px rgba(0, 0, 0, 0.5),
+      -5px -5px 12px rgba(255, 255, 255, 0.045);
+    --neu-raise-sm:
+      3px 3px 7px rgba(0, 0, 0, 0.45),
+      -3px -3px 7px rgba(255, 255, 255, 0.04);
+    --neu-sink:
+      inset 3px 3px 7px rgba(0, 0, 0, 0.5),
+      inset -3px -3px 7px rgba(255, 255, 255, 0.05);
+    --neu-sink-sm:
+      inset 2px 2px 5px rgba(0, 0, 0, 0.45),
+      inset -2px -2px 5px rgba(255, 255, 255, 0.045);
+
+    /* 常规交互高光（叠白） */
+    --surface-hl-soft: rgba(255, 255, 255, 0.05);
+    --surface-hl: rgba(255, 255, 255, 0.07);
+    --surface-hl-strong: rgba(255, 255, 255, 0.12);
+
+    /* 纸张：深色纸面 + 深投影 */
+    --paper-bg: #22262c;
+    --paper-shadow:
+      18px 18px 36px rgba(0, 0, 0, 0.55),
+      -14px -14px 28px rgba(255, 255, 255, 0.045);
+
+    /* 选区 / 滚动条 / 滑块轨道 / 分隔线 */
+    --selection-bg: rgba(107, 147, 245, 0.28);
+    --scroll-thumb: rgba(255, 255, 255, 0.18);
+    --scroll-thumb-hover: rgba(255, 255, 255, 0.3);
+    --track-bg: rgba(255, 255, 255, 0.16);
+    --track-inset: inset 0 1px 2px rgba(0, 0, 0, 0.45);
+    --sep-line: rgba(255, 255, 255, 0.1);
+    --on-accent: #10141c;
+
+    /* 行内代码 / 代码块 / 列表符号 */
+    --inline-code-bg: rgba(255, 255, 255, 0.1);
+    --code-bg: #262b32;
+    --code-bg-inset: #20242a;
+    --code-inset-shadow:
+      inset 2px 2px 6px rgba(0, 0, 0, 0.5),
+      inset -2px -2px 6px rgba(255, 255, 255, 0.04);
+    --code-bg-accent: #262b32;
+    /* 深色终端：在深色纸面上要更沉一点才分得出来 */
+    --code-bg-terminal: #15181d;
+    --marker-color: #e7e9ed;
+  }
+
+  /* ---------- 正文 / 标题 / 列表：墨色换用深色适配版 ----------
+     颜色由 useNoteStyles 注入（--p-color 等是原色，--p-color-dark 是深色适配版），
+     这里只决定「深色下读哪个变量」，用户保存的样式配置不受影响 */
+  :root[data-theme='dark'] .note-content > p,
+  :root[data-theme='dark'] .note-content li {
+    color: var(--p-color-dark, var(--p-color, var(--text-strong)));
+  }
+  :root[data-theme='dark'] .note-content h1 {
+    color: var(--h1-color-dark, var(--h1-color, var(--text-strong)));
+  }
+  :root[data-theme='dark'] .note-content h2 {
+    color: var(--h2-color-dark, var(--h2-color, var(--text-strong)));
+  }
+  :root[data-theme='dark'] .note-content h3 {
+    color: var(--h3-color-dark, var(--h3-color, var(--text-strong)));
+  }
+  :root[data-theme='dark'] .note-content h4 {
+    color: var(--h4-color-dark, var(--h4-color, var(--text-strong)));
+  }
+  :root[data-theme='dark'] .note-content h5 {
+    color: var(--h5-color-dark, var(--h5-color, var(--text-strong)));
+  }
+
+  /* ---------- 表格：边框 / 表头底色换用深色适配版 ---------- */
+  :root[data-theme='dark'] .note-content th,
+  :root[data-theme='dark'] .note-content td {
+    border-color: var(--table-border-dark, var(--table-border, #d8d9dc));
+  }
+  :root[data-theme='dark'] .note-content th {
+    background: var(--table-head-bg-dark, var(--table-head-bg, #f0f0f2));
+  }
+
+  /* ---------- 代码块外观预设：深色下换深色底 ---------- */
+  :root[data-theme='dark'] .note-content pre,
+  :root[data-theme='dark'] .note-content.code-now pre {
+    background: var(--code-bg);
+    border-color: var(--border);
+  }
+  :root[data-theme='dark'] .note-content.code-a pre {
+    background: var(--code-bg-inset);
+    box-shadow: var(--code-inset-shadow);
+  }
+  :root[data-theme='dark'] .note-content.code-b pre {
+    background: var(--code-bg-accent);
+  }
+  :root[data-theme='dark'] .note-content.code-c pre {
+    background: var(--code-bg-terminal);
+  }
+  /* 代码块内的 code 不叠行内代码底色 */
+  :root[data-theme='dark'] .note-content pre code {
+    background: transparent;
+  }
+  :root[data-theme='dark'] .note-content code {
+    background: var(--inline-code-bg);
+  }
+  :root[data-theme='dark'] .note-content li::marker {
+    color: var(--marker-color);
+  }
+  :root[data-theme='dark'] .note-content ::selection {
+    background: var(--selection-bg);
+  }
+
+  /* ---------- 语法高亮：浅色配色在深底上换一套亮色（One Dark 风格） ---------- */
+  :root[data-theme='dark'] .note-content pre .token.comment,
+  :root[data-theme='dark'] .note-content pre .token.prolog,
+  :root[data-theme='dark'] .note-content pre .token.doctype,
+  :root[data-theme='dark'] .note-content pre .token.cdata {
+    color: #7f9f6a;
+  }
+  :root[data-theme='dark'] .note-content pre .token.keyword,
+  :root[data-theme='dark'] .note-content pre .token.control,
+  :root[data-theme='dark'] .note-content pre .token.directive,
+  :root[data-theme='dark'] .note-content pre .token.atrule,
+  :root[data-theme='dark'] .note-content pre .token.module {
+    color: #c678dd;
+  }
+  :root[data-theme='dark'] .note-content pre .token.string,
+  :root[data-theme='dark'] .note-content pre .token.char,
+  :root[data-theme='dark'] .note-content pre .token.attr-value,
+  :root[data-theme='dark'] .note-content pre .token.template-string,
+  :root[data-theme='dark'] .note-content pre .token.inserted {
+    color: #98c379;
+  }
+  :root[data-theme='dark'] .note-content pre .token.number,
+  :root[data-theme='dark'] .note-content pre .token.boolean,
+  :root[data-theme='dark'] .note-content pre .token.constant,
+  :root[data-theme='dark'] .note-content pre .token.symbol {
+    color: #d19a66;
+  }
+  :root[data-theme='dark'] .note-content pre .token.function,
+  :root[data-theme='dark'] .note-content pre .token.method {
+    color: #61afef;
+  }
+  :root[data-theme='dark'] .note-content pre .token.class-name,
+  :root[data-theme='dark'] .note-content pre .token.maybe-class-name,
+  :root[data-theme='dark'] .note-content pre .token.regex,
+  :root[data-theme='dark'] .note-content pre .token.important {
+    color: #e3b341;
+  }
+  :root[data-theme='dark'] .note-content pre .token.parameter {
+    color: #e5c07b;
+  }
+  :root[data-theme='dark'] .note-content pre .token.property,
+  :root[data-theme='dark'] .note-content pre .token.literal-property,
+  :root[data-theme='dark'] .note-content pre .token.attr-name,
+  :root[data-theme='dark'] .note-content pre .token.selector,
+  :root[data-theme='dark'] .note-content pre .token.tag,
+  :root[data-theme='dark'] .note-content pre .token.builtin {
+    color: #7ee787;
+  }
+  :root[data-theme='dark'] .note-content pre .token.operator,
+  :root[data-theme='dark'] .note-content pre .token.entity,
+  :root[data-theme='dark'] .note-content pre .token.url,
+  :root[data-theme='dark'] .note-content pre .token.interpolation {
+    color: #56b6c2;
+  }
+  :root[data-theme='dark'] .note-content pre .token.punctuation,
+  :root[data-theme='dark'] .note-content pre .token.interpolation-punctuation {
+    color: #c9d1d9;
+  }
+  :root[data-theme='dark'] .note-content pre .token.variable {
+    color: #a9bcd8;
+  }
+  :root[data-theme='dark'] .note-content pre .token.deleted {
+    color: #ff7b72;
+  }
+
+  /* ---------- 通用控件高光：深底上把「叠白」压到极弱 ---------- */
+  :root[data-theme='dark'] .icon-btn:hover:not(:active):not(:disabled),
+  :root[data-theme='dark'] .mini-btn:hover:not(:active):not(:disabled) {
+    background: var(--surface-hl);
+  }
+  :root[data-theme='dark'] .btn-primary:hover:not(:active):not(:disabled) {
+    background: var(--surface-hl-strong);
+  }
+  :root[data-theme='dark'] .btn-ghost:hover:not(:active):not(:disabled) {
+    background: var(--surface-hl-soft);
+  }
+}
+
+/* ============================================================
+   黑夜模式（续）：组件内直接写着绝对色的少量的位置
+   —— 组件的 scoped 样式里这些颜色是 rgba(255,255,255,…) 叠白、浅色
+      轨道或纯白底，深色下会过亮 / 突兀，这里统一覆盖。
+      `:root[data-theme='dark']` 前缀的特异性高于组件的单属性选择器，
+      所以无需改组件文件。同样只在屏幕上生效。
+   ============================================================ */
+@media screen {
+  /* 顶栏下拉 / 字体面板 / 目录 / 工具栏 / 表格菜单 / 样式弹窗的 hover 高光 */
+  :root[data-theme='dark'] .fs__btn:hover:not(:active):not(.open),
+  :root[data-theme='dark'] .fs__opt:hover:not(.is-active),
+  :root[data-theme='dark'] .outline__item:hover:not(.is-active),
+  :root[data-theme='dark'] .btn:hover:not(:active):not(.active),
+  :root[data-theme='dark'] .tb .btn:hover:not(:active):not(.open),
+  :root[data-theme='dark'] .tb__opt:hover:not(:active),
+  :root[data-theme='dark'] .tb__align-btn:hover:not(:active):not(.active),
+  :root[data-theme='dark'] .tb__step:hover:not(:active),
+  :root[data-theme='dark'] .ss__btn:hover:not(:active):not(.active),
+  :root[data-theme='dark'] .ss__close:hover:not(:active),
+  :root[data-theme='dark'] .ss__tab:hover:not(:active):not(.active),
+  :root[data-theme='dark'] .seg__btn:hover:not(:active):not(.active),
+  :root[data-theme='dark'] .ss__snap-input:focus,
+  :root[data-theme='dark'] .ss__go--ghost:hover:not(:active),
+  :root[data-theme='dark'] .ss__trigger:hover:not(:active):not(.open),
+  :root[data-theme='dark'] .ss__mini:hover:not(:active),
+  :root[data-theme='dark'] .ss__reset:hover:not(:active),
+  :root[data-theme='dark'] .ss__save:hover:not(:active):not(:disabled),
+  :root[data-theme='dark'] .cb-opt:hover:not(:disabled):not(.active) {
+    background: var(--surface-hl);
+  }
+
+  /* 表格菜单：主操作亮一层 / 危险操作换亮红 / 分隔线换浅色 */
+  :root[data-theme='dark'] .tb__opt--primary {
+    background: var(--surface-hl-strong);
+  }
+  :root[data-theme='dark'] .tb__opt--danger {
+    color: var(--danger);
+  }
+  :root[data-theme='dark'] .tb__sep {
+    background: var(--sep-line);
+  }
+
+  /* 样式弹窗：滑块轨道 / 取色色块 / 蓝底主按钮 */
+  :root[data-theme='dark'] .range::-webkit-slider-runnable-track {
+    background: var(--track-bg);
+    box-shadow: var(--track-inset);
+  }
+  :root[data-theme='dark'] .range::-moz-range-track {
+    background: var(--track-bg);
+  }
+  :root[data-theme='dark'] .c-swatch {
+    background: var(--bg-soft);
+  }
+  :root[data-theme='dark'] .ss__go {
+    background: linear-gradient(180deg, #5c86ef, var(--accent));
+    color: var(--on-accent);
   }
 }

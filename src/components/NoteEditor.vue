@@ -1152,11 +1152,9 @@ onBeforeUnmount(() => {
   flex-direction: column;
   padding: 30px 40px 0;
   overflow: hidden;
-  background: #fffef8; /* 白纸卡面 */
+  background: var(--paper-bg); /* 纸面：浅色是白纸，黑夜模式换深色纸 */
   border-radius: 20px;
-  box-shadow:
-    18px 18px 36px rgba(95, 100, 110, 0.32),
-    -14px -14px 28px rgba(255, 255, 255, 0.9);
+  box-shadow: var(--paper-shadow);
 }
 
 /* 滚动内容区：可滚动的只有这里，四边 padding 均不参与滚动 */
