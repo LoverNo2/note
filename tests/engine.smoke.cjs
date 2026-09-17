@@ -666,6 +666,45 @@ console.log('M. 代码块末尾的光标锚点')
 }
 
 reset()
+console.log('P. 代码块末尾按 ↓ 新建空行')
+{
+  // 末尾空行（<br> + 零宽锚点）+ 后面已有内容：应插入空段落，原内容下移
+  const el = editorWith('<pre><code>const a = 1<br>\u200b</code></pre><p>后面</p>')
+  const anchorText = el.querySelector('code').lastChild
+  const sel = window.getSelection()
+  const r = document.createRange()
+  r.setStart(anchorText, 1)
+  r.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(r)
+  assert.strictEqual(blocks.codeExitOnArrowDown(el), true, '末尾按 ↓ 应处理')
+  const tags = Array.from(el.children).map((n) => n.tagName)
+  assert.deepStrictEqual(tags, ['PRE', 'P', 'P'], '代码块下方插入空段落，原内容下移')
+  assert.strictEqual((el.children[1].textContent || '').trim(), '', '新空行无文本')
+  assert.strictEqual(el.children[2].textContent, '后面', '原有内容保持在下')
+  check('P1 末尾按 ↓ 总在代码块下方新建空行，原内容下移', () => {})
+}
+{
+  // 非最后一行不处理；最后一行任意列都触发
+  const el = editorWith('<pre><code>a<br>b<br>c</code></pre>')
+  const code = el.querySelector('code')
+  const sel = window.getSelection()
+  const r = document.createRange()
+  r.setStart(code.firstChild, 1) // 第 0 行
+  r.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(r)
+  assert.strictEqual(blocks.codeExitOnArrowDown(el), false, '非最后一行交给浏览器')
+  const r2 = document.createRange()
+  r2.setStart(code.lastChild, 0) // 最后一行行首（任意位置）
+  r2.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(r2)
+  assert.strictEqual(blocks.codeExitOnArrowDown(el), true, '最后一行任意位置可触发')
+  check('P2 仅最后一行触发（任意列）', () => {})
+}
+
+reset()
 console.log('N. 保存时的代码块格式化')
 {
   const src = 'if (x) {\n\t\treturn x;\n\t}'
@@ -694,6 +733,63 @@ console.log('N. 保存时的代码块格式化')
   assert.strictEqual(once, '    foo()\n\n    bar()')
   assert.strictEqual(blocks.formatCodeText(once), once)
   check('N4 格式化幂等', () => {})
+}
+{
+  // 行尾注释 → 注释提为独立一行、其上方空一行；单行 if + return 一并拆行
+  const src = ['const a = 1', 'if (nodes.size() == 0) return null // 空场景', 'const b = 2'].join('\n')
+  const out = blocks.formatCodeText(src)
+  assert.strictEqual(
+    out,
+    ['const a = 1', '', '// 空场景', 'if (nodes.size() == 0)', '    return null', 'const b = 2'].join('\n'),
+  )
+  check('N5 行尾注释上移 + if + return 拆行', () => {})
+}
+{
+  // 普通行尾注释：注释上移、上方空一行；剥离后落在行尾的分号去掉
+  const src = ['a = 1', 'names = []; // 字符串池', 'b = 2'].join('\n')
+  const out = blocks.formatCodeText(src)
+  assert.strictEqual(
+    out,
+    ['a = 1', '', '// 字符串池', 'names = []', 'b = 2'].join('\n'),
+  )
+  check('N6 普通行尾注释上移 + 空行 + 去分号', () => {})
+}
+{
+  // 独占一行的注释不动；`else if` 与块级 if 不动；结果幂等
+  const alone = ['a = 1', '// 独立注释', 'b = 2'].join('\n')
+  assert.strictEqual(blocks.formatCodeText(alone), alone)
+  assert.strictEqual(blocks.formatCodeText('else if (a) return b'), 'else if (a) return b')
+  const block = ['if (a) {', '    return b', '}'].join('\n')
+  assert.strictEqual(blocks.formatCodeText(block), block)
+  const indented = blocks.formatCodeText('    if (a) return b')
+  assert.strictEqual(indented, '    if (a)\n        return b')
+  assert.strictEqual(blocks.formatCodeText(indented), indented)
+  const hoisted = blocks.formatCodeText(['x = 1', 'y = 2 // Y'].join('\n'))
+  assert.strictEqual(blocks.formatCodeText(hoisted), hoisted)
+  check('N7 独立注释 / else if / 块级 if 不动，幂等', () => {})
+}
+{
+  // 单行控制结构（if / for / while）都拆；条件/体含括号、块级、空体正确处理
+  assert.strictEqual(
+    blocks.formatCodeText('if (data.tree) child._set_tree(data.tree)'),
+    'if (data.tree)\n    child._set_tree(data.tree)',
+  )
+  assert.strictEqual(
+    blocks.formatCodeText('for (const child of data.children.reverse()) child._propagate_exit_tree()'),
+    'for (const child of data.children.reverse())\n    child._propagate_exit_tree()',
+  )
+  assert.strictEqual(blocks.formatCodeText('while (x) y()'), 'while (x)\n    y()')
+  assert.strictEqual(
+    blocks.formatCodeText('if (a.b(c)) d(e)'),
+    'if (a.b(c))\n    d(e)',
+  )
+  const blk = 'if (a) { done() }'
+  assert.strictEqual(blocks.formatCodeText(blk), blk, '单行块级结构不拆')
+  const loopBlk = 'for (const x of xs) { go(x) }'
+  assert.strictEqual(blocks.formatCodeText(loopBlk), loopBlk, '单行块级 for 不拆')
+  const empty = 'if (ready)'
+  assert.strictEqual(blocks.formatCodeText(empty), empty, '体为空的结构不拆')
+  check('N8 单行 if / for / while 都拆行；括号 / 块级 / 空体正确', () => {})
 }
 
 reset()

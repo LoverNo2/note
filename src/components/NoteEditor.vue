@@ -26,6 +26,9 @@ function unwrapTokenSpans(root: HTMLElement): void {
   }
 }
 import {
+  breakInlineControl,
+  CODE_FORMAT,
+  hoistTrailingComments,
   caretAnchor,
   caretTextIndex,
   codeExitOnArrowDown,
@@ -622,7 +625,15 @@ async function formatCodeOnSave(): Promise<void> {
     // 先直接交给 Prettier；整段因“缺分号”类错误解析不了时，按报错位置补分号重试
     let pretty = await formatJavaScript(text);
     if (pretty === null) pretty = await formatJavaScriptWithRepair(text);
-    const next = pretty ?? formatCodeText(text);
+    // Prettier 结果也套一遍「行尾注释上移 + 单行控制结构拆行」；
+    // 非 JS / 解析失败则走简单规则（内部已含同一套整理步骤）
+    const next =
+      pretty === null
+        ? formatCodeText(text)
+        : breakInlineControl(
+            hoistTrailingComments(pretty, CODE_FORMAT.stripTrailingSemicolon),
+            CODE_FORMAT.tabSize,
+          );
     if (next === text) continue;
     setCodeBlockText(pre, next);
     changed = true;

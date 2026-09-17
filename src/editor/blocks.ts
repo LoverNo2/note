@@ -1260,27 +1260,23 @@ export function healStrayTopLevelText(editor: HTMLElement): void {
 }
 
 /**
- * 光标在代码块最后一行行尾并按 ↓ 方向键：若代码块是正文最后一个内容块，
- * 在其下方新建一个正文段落并把光标移过去（相当于“跳出代码块另起新行”）。
- * 返回是否已处理；代码块后还有其它内容时返回 false 交给浏览器默认移动光标。
+ * 光标在代码块最后一行（含末尾空行）的任意位置按 ↓ 方向键：
+ * 在代码块正下方新建一个正文段落（原有内容整体下移），并把光标移过去——
+ * 相当于“从代码块底部另起一个新空行”。返回是否已处理；不在最后一行时
+ * 返回 false，交给浏览器默认在代码块内下移光标。
  */
 export function codeExitOnArrowDown(editor: HTMLElement): boolean {
   const block = resolveBlock(editor)
   if (!block || block.tagName !== 'PRE') return false
   const caret = getCaretRange(editor)
   if (!caret) return false
+  const code = ensureCodeEl(block)
+  if (!code || !code.contains(caret.startContainer)) return false
 
-  // 末尾判定：光标之前的文本量已达块内文本总量。
-  // （浏览器会在块尾留下空文本节点，单纯比较“最后一个文本节点”会误判）
-  const total = (block.textContent ?? '').length
-  const atEnd = textOffsetAtCaret(block, caret) >= total
-  if (!atEnd) return false
-
-  let next = block.nextElementSibling as HTMLElement | null
-  while (next && next.tagName === 'HR') {
-    next = next.nextElementSibling as HTMLElement | null
-  }
-  if (next) return false
+  // 最后一行判定：光标所在行号 == 末行行号（末尾空行也算一行）
+  const lines = codeLineTexts(code)
+  const { line } = codeLineCol(code, caret.startContainer, caret.startOffset)
+  if (line < lines.length - 1) return false
 
   const p = newParagraph()
   block.after(p)
@@ -1458,6 +1454,15 @@ export interface CodeFormatOptions {
    * 就把各行的缩进按同一比例放大到 tabSize（2→4、4→8、6→12…），结构不变。
    */
   normalizeIndent: boolean
+  /**
+   * 单行控制结构（if / for / while）拆成两行，体为块 `{ … }` 的除外：
+   *   if (cond) doSomething()
+   * →
+   *   if (cond)
+   *       doSomething()
+   * 若同行还带行尾注释，注释会先被提到该行上方（见 hoistTrailingComments）。
+   */
+  breakInlineControl: boolean
 }
 
 export const CODE_FORMAT: CodeFormatOptions = {
@@ -1465,6 +1470,7 @@ export const CODE_FORMAT: CodeFormatOptions = {
   collapseBlankLines: true,
   stripTrailingSemicolon: true,
   normalizeIndent: true,
+  breakInlineControl: true,
 }
 
 /**
@@ -1495,6 +1501,103 @@ export function normalizeIndentScale(
     if (width <= 0 || width % minUnit !== 0) return line
     return ' '.repeat((width / minUnit) * tabSize) + line.trimStart()
   })
+}
+
+/**
+ * 行尾注释整理（纯函数）：
+ * - 独占一行的注释（前面只有空白）原样保留；
+ * - 行尾注释 `code // 注释` → 注释提为 code 上方独立一行，并在注释上方空一行；
+ *   剥离后落在行尾的分号一并去掉（与去行尾分号规则一致）。
+ * 空行不叠加：上方已是空行时不再重复插入。
+ */
+export function hoistTrailingComments(src: string, stripTrailingSemicolon = true): string {
+  const out: string[] = []
+  for (const line of src.split('\n')) {
+    const at = line.indexOf('//')
+    const code = at >= 0 ? line.slice(0, at) : line
+    if (at < 0 || code.trim() === '') {
+      out.push(line) // 无注释，或整行注释（独占一行）—— 都不动
+      continue
+    }
+    const body = code.replace(/[ \t]+$/, '')
+    const indent = (/^[ \t]*/.exec(body) ?? [''])[0]
+    const comment = line.slice(at).trim()
+    if (out.length && out[out.length - 1] !== '') out.push('') // 注释上方空一行
+    out.push(`${indent}${comment}`)
+    out.push(stripTrailingSemicolon ? body.replace(/;$/, '') : body)
+  }
+  return out.join('\n')
+}
+
+/** 行首即为 if / for / while 且后跟 `(` 的行 */
+const INLINE_HEAD_RE = /^([ \t]*)(if|for|while)[ \t]*\(/
+
+/**
+ * 拆出单行控制结构 `if|for|while (…)<体>` 的四段（缩进 / 关键字 / 条件 / 体）。
+ * 用括号配对定位收尾 `)`，避免“条件或体内含括号”时被正则误切；
+ * 行首不是控制关键字、或括号不配对时返回 null。
+ */
+function splitInlineControl(
+  line: string,
+): { indent: string; keyword: string; cond: string; body: string } | null {
+  const head = INLINE_HEAD_RE.exec(line)
+  if (!head) return null
+  const indent = head[1]
+  const keyword = head[2]
+  const open = head[0].length - 1
+  let depth = 0
+  let i = open
+  for (; i < line.length; i++) {
+    const ch = line[i]
+    if (ch === '(') depth += 1
+    else if (ch === ')') {
+      depth -= 1
+      if (depth === 0) break
+    }
+  }
+  if (depth !== 0) return null
+  return {
+    indent,
+    keyword,
+    cond: line.slice(open + 1, i).trim(),
+    body: line.slice(i + 1).trim(),
+  }
+}
+
+/**
+ * 单行控制结构拆行（纯函数）：`if|for|while (cond) <单条语句>` →
+ *   if (cond)
+ *       <语句>
+ * - 只处理“行首就是控制关键字”的整行；`else if …` 不受影响；
+ * - 体为空（`if (cond)`）或为块（`{ … }`）时不拆；
+ * - 行尾注释通常已由 hoistTrailingComments 提走，这里对残留注释做兜底（提到该行上方）。
+ */
+export function breakInlineControl(src: string, tabSize = 4): string {
+  const pad = ' '.repeat(Math.max(1, tabSize))
+  const out: string[] = []
+  for (const line of src.split('\n')) {
+    const split = splitInlineControl(line)
+    if (!split) {
+      out.push(line)
+      continue
+    }
+    const { indent, keyword, cond, body: raw } = split
+    if (!raw || raw.startsWith('{')) {
+      out.push(line) // 体为空、或块级结构：整体不拆
+      continue
+    }
+    let body = raw
+    let comment = ''
+    const at = body.indexOf('//')
+    if (at >= 0) {
+      comment = body.slice(at).trim()
+      body = body.slice(0, at).trim()
+    }
+    if (comment) out.push(`${indent}${comment}`)
+    out.push(`${indent}${keyword} (${cond})`)
+    if (body) out.push(`${indent}${pad}${body}`)
+  }
+  return out.join('\n')
 }
 
 export function formatCodeText(src: string, opts: CodeFormatOptions = CODE_FORMAT): string {
@@ -1530,6 +1633,15 @@ export function formatCodeText(src: string, opts: CodeFormatOptions = CODE_FORMA
 
   if (opts.normalizeIndent) {
     lines = normalizeIndentScale(lines, opts.tabSize)
+  }
+
+  if (opts.breakInlineControl) {
+    // 先把行尾注释提到独立一行（注释上方空一行），再拆单行控制结构
+    lines = hoistTrailingComments(
+      lines.join('\n'),
+      opts.stripTrailingSemicolon,
+    ).split('\n')
+    lines = breakInlineControl(lines.join('\n'), opts.tabSize).split('\n')
   }
 
   return lines.join('\n')
