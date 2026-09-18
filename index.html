@@ -6,6 +6,17 @@
     <meta name="color-scheme" content="light" />
     <title>my notebook</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script>
+      // 尽早套用已保存的外观（黑夜模式），避免启动瞬间先闪一下浅色。
+      // 之后 main.ts 还会按项目 ui-settings.json 里的选择再校正一次。
+      try {
+        if (localStorage.getItem('notebook:theme:v1') === 'dark') {
+          document.documentElement.setAttribute('data-theme', 'dark')
+        }
+      } catch (e) {
+        /* 存储不可用：忽略，按浅色启动 */
+      }
+    </script>
   </head>
   <body>
     <div id="app"></div>

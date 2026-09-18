@@ -1,5 +1,6 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { markSettingsDirty } from './settingsFile'
+import { adaptFillForDark, adaptInkForDark, isLightColor } from '../utils/color'
 
 /**
  * 正文与标题（paragraph / h1 / h2 / h3）的可视化样式配置。
@@ -223,10 +224,18 @@ watch(
 )
 
 /** 表格外观 → CSS 变量的值（挂到 .note-content 上） */
-const tableVars = computed<Record<string, string>>(() => ({
-  '--table-border': tableStyle.value.borderColor || TABLE_STYLE_DEFAULTS.borderColor,
-  '--table-head-bg': tableStyle.value.headerBg || 'transparent',
-}))
+const tableVars = computed<Record<string, string>>(() => {
+  const border = tableStyle.value.borderColor || TABLE_STYLE_DEFAULTS.borderColor
+  const head = tableStyle.value.headerBg || 'transparent'
+  return {
+    '--table-border': border,
+    '--table-head-bg': head,
+    // 深色主题专用：浅色边框 / 浅色表头底在深色纸面上会被压暗到可见
+    // （'transparent' 之类非 hex 值原样返回）。浅色主题与打印仍用上面两个原值。
+    '--table-border-dark': adaptFillForDark(border),
+    '--table-head-bg-dark': adaptFillForDark(head),
+  }
+})
 
 const STORAGE_KEY = 'notebook:textStyles:v1'
 /** 正文段间距默认值迁移标记（6 → 0） */
@@ -348,6 +357,15 @@ watch(
   { deep: true },
 )
 
+/**
+ * 深色主题下的墨色：块自带浅色底（如给标题加了浅色高亮）时保持原色——
+ * 否则提亮后的文字压在浅色底上反而看不清；其余情况按深色纸面提亮。
+ */
+function inkForDark(s: TextBlockStyle): string {
+  if (s.bgAlpha >= 0.5 && isLightColor(s.bg)) return s.color
+  return adaptInkForDark(s.color)
+}
+
 /** 渲染给 .note-content 的 CSS 变量对象 */
 const cssVars = computed<Record<string, string | number>>(() => {
   const vars: Record<string, string | number> = {}
@@ -363,6 +381,8 @@ const cssVars = computed<Record<string, string | number>>(() => {
     vars[`--${suf}-fw`] = s.fontWeight
     vars[`--${suf}-lh`] = s.lineHeight
     vars[`--${suf}-color`] = s.color
+    // 深色主题专用墨色；浅色主题与打印（导出 PDF）仍用上面的原色
+    vars[`--${suf}-color-dark`] = inkForDark(s)
     vars[`--${suf}-italic`] = s.italic ? 'italic' : 'normal'
     vars[`--${suf}-dec`] = decorations.length > 0 ? decorations.join(' ') : 'none'
     vars[`--${suf}-ls`] = `${s.letterSpacing}em`

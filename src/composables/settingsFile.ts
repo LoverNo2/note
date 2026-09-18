@@ -20,6 +20,8 @@ const SYNCED_KEYS = [
   'notebook:codeBlockStyle:v1',
   'notebook:tableStyle:v1',
   'notebook:fonts:v1',
+  // 外观主题（浅色 / 黑夜模式）
+  'notebook:theme:v1',
   // 迁移标记也一并同步，避免换机器后重复触发一次性迁移
   'notebook:textStyles:segGapMigrated',
   'notebook:textStyles:snapshots:segGapMigrated',

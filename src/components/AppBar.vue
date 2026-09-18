@@ -7,10 +7,13 @@ import StyleSettings from "./StyleSettings.vue";
 import FontSwitcher from "./FontSwitcher.vue";
 import { textFromHtml } from "../editor/html";
 import { formatRelativeTime, noteSummary } from "../utils/format";
+import { useTheme } from "../composables/useTheme";
 
 const { sortedNotes, currentNote, createNote, selectNote, deleteNote } =
   useNotes();
 const { toasts, toast } = useToast();
+/** 外观主题：浅色 / 黑夜模式（切换按钮放在导出 PDF 左侧） */
+const { isDark, toggleTheme } = useTheme();
 /** 只展示最新一条提示（显示在文章选择器右侧，纯文字） */
 const latestToast = computed(() => {
   const list = toasts.value;
@@ -173,8 +176,41 @@ onBeforeUnmount(() =>
       </transition>
     </div>
 
-    <!-- 右侧：导出 PDF · 样式设置（相邻排布，尺寸一致） -->
+    <!-- 右侧：黑夜模式 · 导出 PDF · 样式设置（相邻排布，尺寸一致） -->
     <div class="appbar__right">
+      <!-- 黑夜模式开关：紧挨在导出 PDF 左侧 -->
+      <button
+        class="theme-btn"
+        :class="{ 'is-dark': isDark }"
+        :title="isDark ? '切换到浅色模式' : '切换到黑夜模式'"
+        :aria-label="isDark ? '切换到浅色模式' : '切换到黑夜模式'"
+        :aria-pressed="isDark"
+        @click="toggleTheme"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          class="theme-btn-ic"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.7"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <!-- 当前是黑夜模式 → 显示太阳（点它回到浅色） -->
+          <template v-if="isDark">
+            <circle cx="12" cy="12" r="4.1" />
+            <path
+              d="M12 3.2v2.3M12 18.5v2.3M3.2 12h2.3M18.5 12h2.3M5.8 5.8l1.6 1.6M16.6 16.6l1.6 1.6M18.2 5.8l-1.6 1.6M7.4 16.6l-1.6 1.6"
+            />
+          </template>
+          <!-- 当前是浅色 → 显示月亮 -->
+          <path
+            v-else
+            d="M20.4 13.7A8.4 8.4 0 1 1 10.3 3.6a6.7 6.7 0 0 0 10.1 10.1z"
+          />
+        </svg>
+      </button>
       <button
         class="pdf-btn"
         title="把当前笔记打印 / 另存为 PDF"
@@ -223,7 +259,8 @@ onBeforeUnmount(() =>
   flex: none;
 }
 
-/* 导出 PDF 按钮：尺寸与样式设置按钮(.ss__btn 36×34)一致 */
+/* 黑夜模式开关 + 导出 PDF 按钮：尺寸与样式设置按钮(.ss__btn 36×34)一致 */
+.theme-btn,
 .pdf-btn {
   display: inline-flex;
   align-items: center;
@@ -241,16 +278,23 @@ onBeforeUnmount(() =>
     color 0.18s ease,
     box-shadow 0.22s ease;
 }
+.theme-btn-ic,
 .pdf-btn-ic {
   width: 22px;
   height: 22px;
 }
+.theme-btn:hover:not(:active),
 .pdf-btn:hover:not(:active) {
-  background: rgba(255, 255, 255, 0.3);
+  background: var(--surface-hl);
   color: var(--text-strong);
 }
+.theme-btn:active,
 .pdf-btn:active {
   box-shadow: var(--neu-sink-sm);
+}
+/* 黑夜模式下让开关保持一点强调色，提示当前处于深色外观 */
+.theme-btn.is-dark {
+  color: var(--accent);
 }
 
 .appbar__left {
@@ -280,10 +324,10 @@ onBeforeUnmount(() =>
   color: var(--text-mid);
 }
 .bar-toast--success {
-  color: #14875c;
+  color: var(--msg-success);
 }
 .bar-toast--error {
-  color: #c73f3a;
+  color: var(--msg-error);
 }
 
 /* 出现：淡入 + 轻微上移；消失：淡出 + 轻微上移，安静不打扰 */
@@ -344,7 +388,7 @@ onBeforeUnmount(() =>
     box-shadow 0.14s ease;
 }
 .picker__trigger:hover:not(:disabled):not(:active):not(.open) {
-  background: rgba(255, 255, 255, 0.3);
+  background: var(--surface-hl);
 }
 .picker__trigger:active:not(:disabled),
 .picker__trigger.open:not(:disabled) {

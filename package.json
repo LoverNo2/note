@@ -8,9 +8,10 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "yarn test:html && yarn test:engine",
+    "test": "yarn test:html && yarn test:engine && yarn test:color",
     "test:html": "esbuild src/editor/html.ts --bundle --format=cjs --platform=node --outfile=node_modules/.cache/html-test.cjs --log-level=error && node tests/html.smoke.cjs",
-    "test:engine": "esbuild src/editor/blocks.ts --bundle --format=cjs --platform=node --outfile=node_modules/.cache/blocks-test.cjs --log-level=error && node tests/engine.smoke.cjs"
+    "test:engine": "esbuild src/editor/blocks.ts --bundle --format=cjs --platform=node --outfile=node_modules/.cache/blocks-test.cjs --log-level=error && node tests/engine.smoke.cjs",
+    "test:color": "esbuild src/utils/color.ts --bundle --format=cjs --platform=node --outfile=node_modules/.cache/color-test.cjs --log-level=error && node tests/color.smoke.cjs"
   },
   "dependencies": {
     "prettier": "^3.9.7",
