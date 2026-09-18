@@ -237,6 +237,63 @@ const tableVars = computed<Record<string, string>>(() => {
   }
 })
 
+/* ---------------- 代码块排版（字号 / 字重 / 行高） ---------------- */
+
+export interface CodeTypography {
+  /** 字号 px */
+  fontSize: number
+  /** 字重 100-900 */
+  fontWeight: number
+  /** 行高倍数 */
+  lineHeight: number
+}
+
+export const CODE_TYPO_DEFAULTS: CodeTypography = {
+  fontSize: 13,
+  fontWeight: 400,
+  lineHeight: 1.7,
+}
+
+const CODE_TYPO_STORAGE_KEY = 'notebook:codeTypography:v1'
+
+function loadCodeTypo(): CodeTypography {
+  try {
+    const raw = localStorage.getItem(CODE_TYPO_STORAGE_KEY)
+    if (!raw) return { ...CODE_TYPO_DEFAULTS }
+    const parsed = JSON.parse(raw) as Partial<CodeTypography>
+    return {
+      fontSize: Math.round(num(parsed.fontSize, 10, 40, CODE_TYPO_DEFAULTS.fontSize)),
+      fontWeight: Math.round(num(parsed.fontWeight, 100, 900, CODE_TYPO_DEFAULTS.fontWeight)),
+      lineHeight: num(parsed.lineHeight, 1, 3, CODE_TYPO_DEFAULTS.lineHeight),
+    }
+  } catch {
+    return { ...CODE_TYPO_DEFAULTS }
+  }
+}
+
+/** 代码块排版（全局共用，独立于正文样式方案） */
+const codeTypo = ref<CodeTypography>(loadCodeTypo())
+
+watch(
+  codeTypo,
+  (v) => {
+    try {
+      localStorage.setItem(CODE_TYPO_STORAGE_KEY, JSON.stringify(v))
+      markSettingsDirty()
+    } catch {
+      /* 存储不可用时忽略 */
+    }
+  },
+  { deep: true },
+)
+
+/** 代码块排版 → CSS 变量（挂到 .note-content 上，pre 读取） */
+const codeTypoVars = computed<Record<string, string | number>>(() => ({
+  '--code-fs': `${codeTypo.value.fontSize}px`,
+  '--code-fw': codeTypo.value.fontWeight,
+  '--code-lh': codeTypo.value.lineHeight,
+}))
+
 const STORAGE_KEY = 'notebook:textStyles:v1'
 /** 正文段间距默认值迁移标记（6 → 0） */
 export const SEG_GAP_MIGRATED_KEY = 'notebook:textStyles:segGapMigrated'
@@ -418,5 +475,8 @@ export function useNoteStyles() {
     tableStyle,
     tableVars,
     tableStyleDefaults: TABLE_STYLE_DEFAULTS,
+    codeTypo,
+    codeTypoVars,
+    codeTypoDefaults: CODE_TYPO_DEFAULTS,
   }
 }

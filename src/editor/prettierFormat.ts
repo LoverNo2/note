@@ -78,6 +78,14 @@ export function insertSemicolonAt(code: string, line: number, col: number): stri
   const at = Math.max(0, Math.min(col, text.length))
   const before = text.slice(0, at)
   if (/;[ \t]*$/.test(before)) return code // 已有分号，不重复插
+  // 只允许在“语句边界”补分号：不能在标识符中间（super → s;uper）或成员访问点后插入。
+  // 否则会把真正的语法错误“修”成语义不同的可解析代码（如把关键字拆成两个 token），
+  // 进而被 formatJavaScriptWithRepair 当成格式化结果采用，破坏内容。
+  const prev = at > 0 ? text[at - 1]! : ""
+  const next = at < text.length ? text[at]! : ""
+  const word = /[A-Za-z0-9_$]/
+  if (word.test(prev) && word.test(next)) return code
+  if (prev === ".") return code
   lines[index] = `${before};${text.slice(at)}`
   return lines.join("\n")
 }

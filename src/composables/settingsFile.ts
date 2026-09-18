@@ -18,6 +18,7 @@ const SYNCED_KEYS = [
   'notebook:textStyles:v1',
   'notebook:textStyles:snapshots:v1',
   'notebook:codeBlockStyle:v1',
+  'notebook:codeTypography:v1',
   'notebook:tableStyle:v1',
   'notebook:fonts:v1',
   // 外观主题（浅色 / 黑夜模式）

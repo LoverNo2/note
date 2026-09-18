@@ -509,8 +509,9 @@ textarea,
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 1.7;
+  font-size: var(--code-fs, 13px);
+  font-weight: var(--code-fw, 400);
+  line-height: var(--code-lh, 1.7);
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--text-strong);
@@ -741,7 +742,7 @@ textarea,
 .note-content pre code:empty {
   display: inline-block;
   min-width: 1em;
-  min-height: 1.7em;
+  min-height: calc(var(--code-lh, 1.7) * 1em);
 }
 
 /* 行内代码 */

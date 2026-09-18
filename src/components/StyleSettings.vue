@@ -4,6 +4,8 @@ import {
   useNoteStyles,
   type TextBlockKey,
   type TextBlockStyle,
+  type CodeBlockStyleKey,
+  type CodeTypography,
 } from "../composables/useNoteStyles";
 import { useToast } from "../composables/useToast";
 import { markSettingsDirty } from "../composables/settingsFile";
@@ -13,6 +15,8 @@ const {
   defaults,
   codeStyle,
   codeStyles: CODE_BLOCK_STYLES,
+  codeTypo,
+  codeTypoDefaults: CODE_TYPO_DEFAULTS,
   tableStyle,
   tableStyleDefaults: TABLE_STYLE_DEFAULTS,
 } = useNoteStyles();
@@ -104,6 +108,20 @@ function applySnapshotTable(src?: { borderColor: string; headerBg: string }): vo
     : { ...TABLE_STYLE_DEFAULTS };
 }
 
+/* ---------------- 代码块外观 + 排版（随方案保存与切换） ---------------- */
+
+/** 应用方案记录的代码块外观 / 排版（旧方案没记录时按内置默认） */
+function applySnapshotCode(style?: CodeBlockStyleKey, typo?: CodeTypography): void {
+  codeStyle.value = style ?? "now";
+  codeTypo.value = typo ? { ...typo } : { ...CODE_TYPO_DEFAULTS };
+}
+
+/** 回到内置默认的代码块外观 / 排版 */
+function resetCodeToDefault(): void {
+  codeStyle.value = "now";
+  codeTypo.value = { ...CODE_TYPO_DEFAULTS };
+}
+
 /* ---------------- 单项目撤销（相对最近一次保存） ---------------- */
 
 /** 当前激活自定义样式的最近一次保存记录 */
@@ -182,6 +200,25 @@ function blurRange(e: MouseEvent): void {
   (e.currentTarget as HTMLInputElement).blur();
 }
 
+/* ---------------- 代码块排版（字号 / 字重 / 行高） ---------------- */
+
+type CodeTypoField = "fontSize" | "fontWeight" | "lineHeight";
+
+/** 该方案里已保存的代码块排版（无记录时按内置默认） */
+function savedCodeTypo(): CodeTypography {
+  return savedSnapOfActive()?.codeTypo ?? CODE_TYPO_DEFAULTS;
+}
+
+/** 该项是否与最近保存一致（一致则隐藏单项 ↺ 图标） */
+function isCodeTypoDefault(field: CodeTypoField): boolean {
+  return codeTypo.value[field] === savedCodeTypo()[field];
+}
+
+/** 单项回到该样式上次保存的值（无记录时回内置默认） */
+function resetCodeTypo(field: CodeTypoField): void {
+  codeTypo.value[field] = savedCodeTypo()[field];
+}
+
 /** 按下瞬间先失焦，让整个拖动过程不携带焦点指示 */
 function blurRangeOnDown(e: PointerEvent): void {
   (e.currentTarget as HTMLInputElement).blur();
@@ -200,6 +237,10 @@ interface StyleSnapshot {
   styles: Record<TextBlockKey, TextBlockStyle>;
   /** 表格外观（边框色 / 表头底色）：随样式方案一起保存与切换 */
   table?: { borderColor: string; headerBg: string };
+  /** 代码块外观预设（经典 / 内凹 / …）：随样式方案保存 */
+  codeStyle?: CodeBlockStyleKey;
+  /** 代码块排版（字号 / 字重 / 行高）：随样式方案保存 */
+  codeTypo?: CodeTypography;
 }
 
 const SNAPSHOTS_KEY = "notebook:textStyles:snapshots:v1";
@@ -264,6 +305,8 @@ function upsertSnap(name: string): boolean {
     savedAt: new Date().toISOString(),
     styles: cloneState(),
     table: snapshotTable(),
+    codeStyle: codeStyle.value,
+    codeTypo: { ...codeTypo.value },
   };
   const idx = snapList.value.findIndex((s) => s.name === name);
   if (idx >= 0) snapList.value[idx] = snap;
@@ -295,7 +338,15 @@ const dirty = computed(() => {
   // 表格外观也属于该方案：它变了同样算“有未保存改动”（旧方案没记录时按内置默认比）
   const saved = snap.table ?? TABLE_STYLE_DEFAULTS;
   const cur = snapshotTable();
-  return saved.borderColor !== cur.borderColor || saved.headerBg !== cur.headerBg;
+  if (saved.borderColor !== cur.borderColor || saved.headerBg !== cur.headerBg) return true;
+  // 代码块外观 + 排版也属于该方案
+  if (codeStyle.value !== (snap.codeStyle ?? "now")) return true;
+  const ct = snap.codeTypo ?? CODE_TYPO_DEFAULTS;
+  return (
+    codeTypo.value.fontSize !== ct.fontSize ||
+    codeTypo.value.fontWeight !== ct.fontWeight ||
+    codeTypo.value.lineHeight !== ct.lineHeight
+  );
 });
 
 /** 底色：'transparent' 表示无底色；色板需要 hex，所以无底色时以纯白起步 */
@@ -330,6 +381,7 @@ function applyDefaultStyle(): void {
   customActive.value = null;
   restoreState(defaults);
   tableStyle.value = { ...TABLE_STYLE_DEFAULTS };
+  resetCodeToDefault();
   pickerOpen.value = false;
   deletingName.value = null;
   toast("已切换到默认样式", "success");
@@ -341,6 +393,7 @@ function applySnapshot(snap: StyleSnapshot): void {
   customActive.value = snap.name;
   restoreState(snap.styles);
   applySnapshotTable(snap.table);
+  applySnapshotCode(snap.codeStyle, snap.codeTypo);
   pickerOpen.value = false;
   deletingName.value = null;
   toast(`已切换到「${snap.name}」`, "success");
@@ -358,6 +411,7 @@ function confirmDeleteStyle(snap: StyleSnapshot): void {
     naming.value = false;
     restoreState(defaults);
     tableStyle.value = { ...TABLE_STYLE_DEFAULTS };
+    resetCodeToDefault();
   }
   deletingName.value = null;
   toast(`已删除配置「${snap.name}」`, "success");
@@ -369,6 +423,7 @@ function createNewStyle(): void {
   deletingName.value = null;
   restoreState(defaults);
   tableStyle.value = { ...TABLE_STYLE_DEFAULTS }; // 新样式从默认表格外观起步
+  resetCodeToDefault(); // 代码块外观 / 排版同样从默认起步
   naming.value = true;
   customActive.value = null;
   nameDraft.value = "";
@@ -384,6 +439,7 @@ function cancelNaming(): void {
   customActive.value = null;
   restoreState(defaults);
   tableStyle.value = { ...TABLE_STYLE_DEFAULTS };
+  resetCodeToDefault();
 }
 
 /** 在名称输入框回车：保存命名并激活该样式 */
@@ -416,6 +472,7 @@ function resetCurrent(): void {
   if (!snap) return;
   restoreState(snap.styles);
   applySnapshotTable(snap.table);
+  applySnapshotCode(snap.codeStyle, snap.codeTypo);
   toast(`已回到「${name}」上次保存的状态`, "success");
 }
 
@@ -1081,6 +1138,80 @@ onBeforeUnmount(() => {
               <pre><code>{{ demoCode }}</code></pre>
             </span>
           </button>
+
+          <!-- 代码块排版：字号 / 字重 / 行高（只作用于代码块） -->
+          <p class="cb-tip cb-tip--gap">排版</p>
+          <div class="f-row">
+            <span class="f-label">字号</span>
+            <input
+              v-model.number="codeTypo.fontSize"
+              class="range"
+              type="range"
+              min="10"
+              max="24"
+              step="1"
+              :style="{ '--pct': pct(10, 24, codeTypo.fontSize) }"
+              @pointerdown="blurRangeOnDown"
+              @mouseup="blurRange"
+            />
+            <span class="f-val">{{ codeTypo.fontSize }}px</span>
+            <button
+              class="f-reset"
+              :class="{ off: isCodeTypoDefault('fontSize') }"
+              title="恢复字号默认"
+              @click="resetCodeTypo('fontSize')"
+            >
+              ↺
+            </button>
+          </div>
+
+          <div class="f-row">
+            <span class="f-label">字重</span>
+            <input
+              v-model.number="codeTypo.fontWeight"
+              class="range"
+              type="range"
+              min="300"
+              max="800"
+              step="10"
+              :style="{ '--pct': pct(300, 800, codeTypo.fontWeight) }"
+              @pointerdown="blurRangeOnDown"
+              @mouseup="blurRange"
+            />
+            <span class="f-val">{{ codeTypo.fontWeight }}</span>
+            <button
+              class="f-reset"
+              :class="{ off: isCodeTypoDefault('fontWeight') }"
+              title="恢复字重默认"
+              @click="resetCodeTypo('fontWeight')"
+            >
+              ↺
+            </button>
+          </div>
+
+          <div class="f-row">
+            <span class="f-label">行高</span>
+            <input
+              v-model.number="codeTypo.lineHeight"
+              class="range"
+              type="range"
+              min="1.2"
+              max="2.6"
+              step="0.05"
+              :style="{ '--pct': pct(1.2, 2.6, codeTypo.lineHeight) }"
+              @pointerdown="blurRangeOnDown"
+              @mouseup="blurRange"
+            />
+            <span class="f-val">{{ codeTypo.lineHeight.toFixed(2) }}</span>
+            <button
+              class="f-reset"
+              :class="{ off: isCodeTypoDefault('lineHeight') }"
+              title="恢复行高默认"
+              @click="resetCodeTypo('lineHeight')"
+            >
+              ↺
+            </button>
+          </div>
         </div>
       </div>
     </transition>
@@ -1816,6 +1947,10 @@ onBeforeUnmount(() => {
   font-size: 11.5px;
   line-height: 1.6;
   color: var(--text-mid);
+}
+/* 排版小标题：与上方外观列表之间留出一点距离 */
+.cb-tip--gap {
+  margin-top: 4px;
 }
 .cb-opt {
   display: flex;

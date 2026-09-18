@@ -91,7 +91,7 @@ import { useToast } from "../composables/useToast";
 const { currentNote, dirty, markDirty, markEdited } = useNotes();
 const { toast } = useToast();
 /** 正文与标题的可视化样式（CSS 变量实时注入 .note-content） */
-const { cssVars, tableVars, codeStyleClass, state: textStyles } = useNoteStyles();
+const { cssVars, tableVars, codeTypoVars, codeStyleClass, state: textStyles } = useNoteStyles();
 
 /** 各块（标签名 → 最终底色 CSS 颜色）映射；全透明时为 'transparent'，不会包裹 */
 const bgByTag = computed<Record<string, string>>(() => {
@@ -1049,7 +1049,7 @@ onBeforeUnmount(() => {
             spellcheck="false"
             role="textbox"
             aria-multiline="true"
-            :style="[cssVars, tableVars]"
+            :style="[cssVars, tableVars, codeTypoVars]"
             @input="onContentInput"
             @compositionstart="onCompositionStart"
             @compositionend="onCompositionEnd"
