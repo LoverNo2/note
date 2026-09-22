@@ -15,6 +15,13 @@ import { bgToCss, useNoteStyles } from "../composables/useNoteStyles";
 import type { BlockKind, InlineMark, ToolbarUi } from "../editor/blocks";
 import { highlightCodeBlocks, isBlockHighlighted } from "../editor/highlight";
 import { formatJavaScript, formatJavaScriptWithRepair } from "../editor/prettierFormat";
+import {
+  applyColumnWidths,
+  columnEdgeAt,
+  currentColumnWidths,
+  markColumnCells,
+  resizeNeighbors,
+} from "../editor/tableResize";
 
 /** 去掉代码高亮标记（复制出去的内容保持纯代码） */
 function unwrapTokenSpans(root: HTMLElement): void {
@@ -596,10 +603,11 @@ function ensureEditorSelection(el: HTMLElement): void {
   sel.addRange(lastSel);
 }
 
-/** 结构变化后：落库、入快照、刷新状态 */
+/** 结构变化后：落库、入快照、标记未保存、刷新状态 */
 function afterDomChange(): void {
   syncNoteFromDom();
   snapshotCurrent();
+  markDirty(); // 结构变化（表格行列 / 列宽 / 块类型…）同样是「未保存的修改」
   refreshUi();
   scheduleOutline();
 }
@@ -663,6 +671,121 @@ function rememberTableSelection(): void {
 /** 用户在编辑器里开始新的一次选择动作 → 作废旧的“多格记忆” */
 function onEditorPointerDown(): void {
   lastTableSel = null;
+}
+
+/* ================= 表格列宽拖拽 ================= */
+
+/** 指针落在列分界线上时给单元格加的类名（CSS 负责 col-resize 光标） */
+const COL_EDGE_CLASS = "is-col-resize";
+/** 拖拽中给整列单元格加的类名（CSS 负责高亮这条列） */
+const COL_DRAG_CLASS = "is-col-dragging";
+/** 拖拽期间挂在 body 上的类名（统一光标 + 禁止选中文字） */
+const COL_DRAG_BODY_CLASS = "is-col-resizing";
+
+interface ColDragState {
+  table: HTMLTableElement;
+  /** 被拖的列：分界线左侧那一列（它变宽，右邻列等量变窄） */
+  col: number;
+  startX: number;
+  /** 拖拽起点时各列的实际宽度：每次移动都基于它重算，避免误差累积 */
+  widths: number[];
+}
+
+let colDrag: ColDragState | null = null;
+/** 当前悬停命中的边界单元格（用于切换光标类名，避免每帧都改 DOM） */
+let colEdgeCell: HTMLElement | null = null;
+
+/** 事件目标所在单元格与它所属的表格（不在编辑器表格内时返回 null） */
+function tableCellFrom(
+  node: EventTarget | null,
+): { cell: HTMLElement; table: HTMLTableElement } | null {
+  const el = contentEl.value;
+  const target = node instanceof Element ? node : null;
+  const cell = (target?.closest("th, td") as HTMLElement | null) ?? null;
+  const table = (cell?.closest("table") as HTMLTableElement | null) ?? null;
+  if (!cell || !table || !el || !el.contains(table)) return null;
+  return { cell, table };
+}
+
+/** 指针悬停在列分界线上 → 显示 col-resize 光标 */
+function onEditorPointerMove(e: PointerEvent): void {
+  if (colDrag) return;
+  const info = tableCellFrom(e.target);
+  let next: HTMLElement | null = null;
+  if (info && columnEdgeAt(info.table, e.clientX, e.clientY) !== null) {
+    next = info.cell;
+  }
+  if (next === colEdgeCell) return;
+  colEdgeCell?.classList.remove(COL_EDGE_CLASS);
+  colEdgeCell = next;
+  colEdgeCell?.classList.add(COL_EDGE_CLASS);
+}
+
+/** 指针离开编辑器 → 收起列边界光标（拖拽中不处理，留给 window 上的监听） */
+function onEditorPointerLeave(): void {
+  if (colDrag) return;
+  colEdgeCell?.classList.remove(COL_EDGE_CLASS);
+  colEdgeCell = null;
+}
+
+/** 在列分界线上按下 → 进入拖拽（表格总宽不变，只调这一列与右邻列） */
+function onEditorResizeDown(e: PointerEvent): void {
+  if (e.button !== 0 || colDrag) return;
+  const info = tableCellFrom(e.target);
+  if (!info) return;
+  const col = columnEdgeAt(info.table, e.clientX, e.clientY);
+  if (col === null) return;
+
+  // 别让浏览器把光标放进单元格、也别开始选文字
+  e.preventDefault();
+
+  const widths = currentColumnWidths(info.table);
+  if (widths.length < 2) return;
+  // 把“当前实际宽度”固化进 colgroup：拖拽期间只改 col 的 px，不做别的
+  applyColumnWidths(info.table, widths);
+
+  colDrag = { table: info.table, col, startX: e.clientX, widths };
+  colEdgeCell?.classList.remove(COL_EDGE_CLASS);
+  colEdgeCell = null;
+  markColumnCells(info.table, col, COL_DRAG_CLASS, true);
+  document.body.classList.add(COL_DRAG_BODY_CLASS);
+
+  window.addEventListener("pointermove", onColResizeMove, true);
+  window.addEventListener("pointerup", onColResizeUp, true);
+  window.addEventListener("pointercancel", onColResizeUp, true);
+}
+
+function onColResizeMove(e: PointerEvent): void {
+  const drag = colDrag;
+  if (!drag) return;
+  if (!drag.table.isConnected) {
+    endColResize();
+    return;
+  }
+  e.preventDefault();
+  applyColumnWidths(
+    drag.table,
+    resizeNeighbors(drag.widths, drag.col, e.clientX - drag.startX),
+  );
+}
+
+function onColResizeUp(): void {
+  if (!colDrag) return;
+  const table = colDrag.table;
+  endColResize();
+  // 只改了列宽（结构没变）：落库 + 入快照，可撤销
+  if (table.isConnected) afterDomChange();
+}
+
+function endColResize(): void {
+  if (colDrag) markColumnCells(colDrag.table, colDrag.col, COL_DRAG_CLASS, false);
+  colDrag = null;
+  window.removeEventListener("pointermove", onColResizeMove, true);
+  window.removeEventListener("pointerup", onColResizeUp, true);
+  window.removeEventListener("pointercancel", onColResizeUp, true);
+  document.body.classList.remove(COL_DRAG_BODY_CLASS);
+  colEdgeCell?.classList.remove(COL_EDGE_CLASS);
+  colEdgeCell = null;
 }
 
 /** 方向键改选之后重新评估多格选区（键盘选择也要能更新/作废记忆） */
@@ -991,6 +1114,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
+  endColResize(); // 列宽拖拽中切走笔记 / 卸载组件时收尾
   window.clearTimeout(syncTimer);
   window.clearTimeout(selTimer);
   window.clearTimeout(outlineTimer);
@@ -1058,6 +1182,9 @@ onBeforeUnmount(() => {
             @copy="onCopy"
             @click="refreshUi"
             @keyup="onEditorKeyUp"
+            @pointermove="onEditorPointerMove"
+            @pointerleave="onEditorPointerLeave"
+            @pointerdown="onEditorResizeDown"
             @mousedown="onEditorPointerDown"
             @focus="refreshUi"
             @blur="onBlur"

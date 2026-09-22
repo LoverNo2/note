@@ -43,6 +43,29 @@ function editorWith(html) {
   document.body.appendChild(el)
   return el
 }
+{
+  // 回归：已渲染的代码块（换行是 <br>）不能被 codeTextToBrDom 压成一行。
+  // 旧实现按 textContent 重建，看不到 <br> 换行，会把整块挤成一行，
+  // 之后高亮就把这一行从行首 // 起全当成注释。
+  const editor = editorWith(
+    '<p>x</p><pre><code>a\nb\nc</code></pre>' +
+      '<pre><code>l1<br>l2<br>l3<br>\u200b</code></pre>',
+  )
+  blocks.codeTextToBrDom(editor)
+  const pres = editor.querySelectorAll('pre')
+  assert.strictEqual(
+    pres[0].querySelectorAll('br').length,
+    2,
+    '存储形态的块应转成 <br> 行',
+  )
+  assert.strictEqual(
+    pres[1].querySelectorAll('br').length,
+    3,
+    '已渲染的块必须原样保留（含末尾光标锚点）',
+  )
+  reset()
+  check('P1 codeTextToBrDom 不破坏已渲染的代码块（含光标锚点）', () => {})
+}
 function firstText(el) {
   return el.querySelector('*')?.firstChild ?? el.firstChild
 }

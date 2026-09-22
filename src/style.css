@@ -555,6 +555,25 @@ textarea,
   font-weight: 600;
 }
 
+/* ---------- 列宽拖拽（拖列分界线，右侧相邻列等量补偿） ---------- */
+/* 指针落在列分界线上：显示可拖拽光标 */
+.note-content th.is-col-resize,
+.note-content td.is-col-resize {
+  cursor: col-resize;
+}
+/* 拖拽中的列：右边界画一条强调线，提示正在调这一列 */
+.note-content th.is-col-dragging,
+.note-content td.is-col-dragging {
+  box-shadow: inset -2px 0 0 var(--accent);
+}
+/* 拖拽期间：全局统一光标并禁止选中文字（压过 .note-content * 的 user-select: text） */
+body.is-col-resizing,
+body.is-col-resizing * {
+  cursor: col-resize !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
 /* 表格四角保持直角（与单元格边框一致，不留圆角） */
 
 /* ---------- 代码块语法高亮（Prism token；仅渲染层，不入存储） ---------- */

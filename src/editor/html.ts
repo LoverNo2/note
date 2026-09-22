@@ -617,6 +617,12 @@ export function sanitizeHtml(html: string): string {
         cEl.remove()
         continue
       }
+      // 列宽（colgroup / col）不是可粘贴的语义：整段丢弃，
+      // 粘进来的表格按均分显示，避免留下无效的孤立 col
+      if (tag === 'COLGROUP' || tag === 'COL') {
+        cEl.remove()
+        continue
+      }
       if (!PASTE_SAFE_TAGS.has(tag)) {
         // 未知标签：保留其文本内容并解包
         const parent = cEl.parentNode

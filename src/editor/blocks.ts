@@ -7,6 +7,8 @@
  * - 引擎只做 DOM 变换并尽量保留光标所在的文本节点；撤销/重做由调用方维护快照
  */
 
+import { insertColumnWidth, removeColumnWidth } from './tableResize'
+
 export type HeadingLevel = 'h1' | 'h2' | 'h3' | 'h4' | 'h5'
 export type BlockKind =
   | 'paragraph'
@@ -959,8 +961,12 @@ export function codeTextToBrDom(editor: HTMLElement): void {
   for (const pre of Array.from(editor.querySelectorAll('pre'))) {
     const code = pre.firstElementChild
     if (!code || code.tagName !== 'CODE') continue
+    // 已是渲染形态的块（换行由 <br> 表示）直接跳过：它的 textContent 里看不到换行，
+    // 按文本重建会把所有 <br> 丢掉、整块压成一行；随后的高亮会把这一整行当成
+    // 从行首 // 开始的注释（表现为「前半段正常、后半段全被注释」）。
+    if (code.querySelector('br')) continue
     const text = code.textContent ?? ''
-    if (!text.includes('\n') && !text.includes(CODE_ANCHOR)) continue
+    if (!text.includes('\n')) continue
     const lines = text.split('\n')
     const endsWithNewline = lines[lines.length - 1] === ''
     code.replaceChildren()
@@ -1851,6 +1857,8 @@ export function insertTableColumnAt(ctx: TableContext, where: 'left' | 'right'):
     if (where === 'left') ref.before(cell)
     else ref.after(cell)
   }
+  // 拖过列宽的表格：colgroup 里补一列（新列取相邻列的一半，总和不变）
+  insertColumnWidth(ctx.table, where === 'left' ? ctx.colIndex : ctx.colIndex + 1)
   const cells = rowCells(ctx.row)
   focusCell(cells[where === 'left' ? ctx.colIndex : ctx.colIndex + 1] ?? cells[0])
   return true
@@ -1859,10 +1867,13 @@ export function insertTableColumnAt(ctx: TableContext, where: 'left' | 'right'):
 /** 删除给定列（只剩一列时删除整张表格，不依赖光标） */
 export function deleteTableColumnAt(ctx: TableContext): boolean {
   if (rowCells(ctx.row).length <= 1) return deleteTableAt(ctx)
+  const removedCol = ctx.colIndex
   for (const row of Array.from(ctx.table.querySelectorAll('tr'))) {
     const cells = rowCells(row)
     cells[Math.min(ctx.colIndex, cells.length - 1)]?.remove()
   }
+  // 拖过列宽的表格：colgroup 里去掉一列（其余列按比例补满，总宽不变）
+  removeColumnWidth(ctx.table, removedCol)
   const cells = rowCells(ctx.row)
   focusCell(cells[Math.min(ctx.colIndex, cells.length - 1)] ?? cells[0])
   return true
