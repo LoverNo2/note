@@ -160,6 +160,22 @@ console.log('B. 中文字距 / 英文间隔包裹')
   assert.ok(close.classList.contains('latin--gap-r')) // ）右边（挨着中文标点）也有空隙
   check('B1 英文/标点与中文交界的两侧留间隔，与西文相邻视为一体', () => {})
 }
+{
+  // 段首不继承上一块的末尾字符：前一块以中文结尾、后一段以西文开头时，
+  // 段首的西文词不应被加上左间隔（否则整段相对上一段“缩进”一点）。
+  const el = editorWith(
+    '<h1>运行时主循环</h1><p>physics_step是倒数</p><p>physics_step是倒数</p>',
+  )
+  blocks.wrapTypographySpans(el)
+  const ps = Array.from(el.querySelectorAll('p'))
+  const first = ps[0].querySelector('span.latin')
+  const second = ps[1].querySelector('span.latin')
+  assert.ok(!first.classList.contains('latin--gap-l'), '段首不应加左间隔')
+  assert.ok(!second.classList.contains('latin--gap-l'), '段首不应加左间隔')
+  assert.ok(first.classList.contains('latin--gap-r'))
+  assert.ok(second.classList.contains('latin--gap-r'))
+  check('B2 段首不继承上一块末尾字符（两段西文段首对齐）', () => {})
+}
 
 reset()
 console.log('C. 代码块往返')

@@ -2274,35 +2274,37 @@ function blockHostOf(node: Node): HTMLElement | null {
   return el?.closest('p,h1,h2,h3,h4,h5,li,pre') ?? null
 }
 
-/** 前一个可见字符（可跨行内标记；行首返回 null） */
+/** 前一个可见字符（可跨行内标记；块首返回 null，不跨块） */
 function charBefore(node: Node): string | null {
   const host = blockHostOf(node)
+  if (!host) return null
   let cur: Node | null = node
-  while (cur) {
+  // 只在本块内部向前找；到 host 即停，不把上一个块的末尾字符当成“前一个字符”
+  while (cur && cur !== host) {
     let prev = cur.previousSibling
     while (prev) {
       const text = prev.textContent ?? ''
       if (text) return text.slice(-1)
       prev = prev.previousSibling
     }
-    if (!host || cur === host || !cur.parentElement) return null
     cur = cur.parentElement
   }
   return null
 }
 
-/** 后一个可见字符（可跨行内标记；行尾返回 null） */
+/** 后一个可见字符（可跨行内标记；块尾返回 null，不跨块） */
 function charAfter(node: Node): string | null {
   const host = blockHostOf(node)
+  if (!host) return null
   let cur: Node | null = node
-  while (cur) {
+  // 同 charBefore：只在本块内部向后找，不把下一个块的首字符当成“后一个字符”
+  while (cur && cur !== host) {
     let next = cur.nextSibling
     while (next) {
       const text = next.textContent ?? ''
       if (text) return text.slice(0, 1)
       next = next.nextSibling
     }
-    if (!host || cur === host || !cur.parentElement) return null
     cur = cur.parentElement
   }
   return null
